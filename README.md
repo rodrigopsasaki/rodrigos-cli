@@ -18,13 +18,13 @@ A developer-first CLI framework that makes local commands feel native — like t
 
 #### Option 1: One-liner (Recommended)
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yourusername/rodrigos-cli/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/rodrigopsasaki/rodrigos-cli/main/install.sh | bash
 ```
 
 #### Option 2: Manual installation
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/rodrigos-cli.git
+git clone https://github.com/rodrigopsasaki/rodrigos-cli.git
 cd rodrigos-cli
 
 # Run the installer
@@ -34,7 +34,7 @@ cd rodrigos-cli
 #### Option 3: Using npm scripts
 ```bash
 # Clone and setup
-git clone https://github.com/yourusername/rodrigos-cli.git
+git clone https://github.com/rodrigopsasaki/rodrigos-cli.git
 cd rodrigos-cli
 npm run setup
 ```
@@ -267,7 +267,7 @@ All commands discovered from your extensions directory are automatically availab
 
 ```bash
 # Clone and install
-git clone <repo>
+git clone https://github.com/rodrigopsasaki/rodrigos-cli.git
 cd rodrigos-cli
 npm install
 
