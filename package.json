@@ -16,7 +16,10 @@
     "lint:fix": "eslint src --ext .ts --fix",
     "format": "prettier --write src/**/*.ts",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "postinstall": "npm run build && chmod +x dist/bin/rc.js",
+    "setup": "npm run build && chmod +x dist/bin/rc.js && ln -sf $(pwd)/dist/bin/rc.js ~/.local/bin/rc && echo '✅ rc CLI installed successfully! Run \"rc\" to test.'",
+    "uninstall": "rm -f ~/.local/bin/rc && echo '✅ rc CLI uninstalled.'"
   },
   "keywords": ["cli", "framework", "extensions", "developer-tools"],
   "author": "Rodrigo Sasaki",

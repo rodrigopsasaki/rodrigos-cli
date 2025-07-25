@@ -16,8 +16,27 @@ A developer-first CLI framework that makes local commands feel native — like t
 
 ### Installation
 
+#### Option 1: One-liner (Recommended)
 ```bash
-npm install -g rodrigos-cli
+curl -fsSL https://raw.githubusercontent.com/yourusername/rodrigos-cli/main/install.sh | bash
+```
+
+#### Option 2: Manual installation
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/rodrigos-cli.git
+cd rodrigos-cli
+
+# Run the installer
+./install.sh
+```
+
+#### Option 3: Using npm scripts
+```bash
+# Clone and setup
+git clone https://github.com/yourusername/rodrigos-cli.git
+cd rodrigos-cli
+npm run setup
 ```
 
 ### Setup
@@ -262,9 +281,31 @@ npm run build
 npm test
 ```
 
+### Quick Setup for Development
+
+```bash
+# Install and setup for development
+npm run setup
+
+# Test the CLI
+rc
+rc help
+rc gen uuid
+```
+
 ### Testing Extensions
 
 The CLI uses the `examples/extensions/` directory for testing during development. You can add your test extensions there.
+
+### Uninstalling
+
+```bash
+# Remove the CLI
+npm run uninstall
+
+# Or manually
+rm ~/.local/bin/rc
+```
 
 ## 🏗️ Architecture
 

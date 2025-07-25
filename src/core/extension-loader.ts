@@ -64,7 +64,7 @@ export class ExtensionLoader {
   }
 
   private isExecutableFile(filename: string): boolean {
-    const executableExtensions = ['.js', '.ts', '.sh', '.py', '.rb', '.php'];
+    const executableExtensions = ['.js', '.ts', '.cjs', '.sh', '.py', '.rb', '.php'];
     const ext = extname(filename);
     return executableExtensions.includes(ext);
   }
@@ -99,6 +99,8 @@ export class ExtensionLoader {
         return 'js';
       case '.ts':
         return 'ts';
+      case '.cjs':
+        return 'js';
       case '.sh':
         return 'sh';
       case '.py':
