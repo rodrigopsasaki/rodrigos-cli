@@ -20,7 +20,8 @@ program
   .option("--debug", "Enable debug mode (same as --verbose)")
   .option("--setup", "Create example extensions and configuration")
   .option("--config", "Show detailed configuration information")
-  .option("--joke", "Show a dad joke");
+  .option("--joke", "Show a dad joke")
+  .option("--migrate", "Show XDG directory structure and benefits");
 
 // Initialize core services
 const configManager = new ConfigManager();
@@ -73,18 +74,21 @@ program.action(async (options) => {
     console.log(themeChalk.textMuted("   rc help              # Show available commands"));
     console.log(themeChalk.textMuted("   rc --setup           # Create example extensions"));
     console.log(themeChalk.textMuted("   rc --config          # Show detailed config info"));
+    console.log(themeChalk.textMuted("   rc --migrate         # Show XDG directory structure"));
     console.log(themeChalk.textMuted("   rc --joke            # Show a dad joke"));
     console.log("");
-  } else {
-    // Handle specific options
-    if (options.setup) {
-      await handleSetup();
-    } else if (options.config) {
-      await handleConfig();
-    } else if (options.joke) {
-      await handleJoke();
+      } else {
+      // Handle specific options
+      if (options.setup) {
+        await handleSetup();
+      } else if (options.config) {
+        await handleConfig();
+      } else if (options.joke) {
+        await handleJoke();
+      } else if (options.migrate) {
+        await handleMigrate();
+      }
     }
-  }
 });
 
 // Handler functions
@@ -92,19 +96,33 @@ async function handleSetup() {
   console.log(themeChalk.header("\n🔧 Setting up Rodrigo's CLI...\n"));
 
   try {
-    // Get user's home directory for extensions
-    const { homedir } = await import("os");
-    const { join } = await import("path");
+    // Import required modules
     const { mkdirSync, readdirSync, statSync, copyFileSync } = await import("fs");
+    const { join } = await import("path");
+    const { XDGPaths } = await import("../utils/xdg-paths.js");
 
-    const userExtensionsDir = join(homedir(), ".rc", "extensions");
+    // Use XDG-compliant paths
+    const userExtensionsDir = XDGPaths.getExtensionsDir();
 
-    console.log(themeChalk.section("📁 Creating extensions directory..."));
-    if (!existsSync(userExtensionsDir)) {
-      mkdirSync(userExtensionsDir, { recursive: true });
-      console.log(themeChalk.status(`   ✅ Created: ${userExtensionsDir}`));
-    } else {
-      console.log(themeChalk.textMuted(`   📁 Already exists: ${userExtensionsDir}`));
+    // Create XDG directory structure
+    console.log(themeChalk.section("📁 Creating XDG directory structure..."));
+    
+    const xdgDirs = XDGPaths.getAllAppDirs();
+    const dirsToCreate = [
+      { path: xdgDirs['config'], name: "Configuration" },
+      { path: xdgDirs['data'], name: "Data" },
+      { path: xdgDirs['cache'], name: "Cache" },
+      { path: xdgDirs['state'], name: "State" },
+      { path: userExtensionsDir, name: "Extensions" }
+    ];
+
+    for (const dir of dirsToCreate) {
+      if (dir.path && !existsSync(dir.path)) {
+        mkdirSync(dir.path, { recursive: true });
+        console.log(themeChalk.status(`   ✅ Created ${dir.name}: ${dir.path}`));
+      } else if (dir.path) {
+        console.log(themeChalk.textMuted(`   📁 ${dir.name} already exists: ${dir.path}`));
+      }
     }
 
     // Copy example extensions
@@ -166,9 +184,19 @@ async function handleConfig() {
   const config = configManager.getConfig();
   const configPath = configManager.getConfigPath();
 
+  // Import XDG paths for display
+  const { XDGPaths } = await import("../utils/xdg-paths.js");
+  const xdgDirs = XDGPaths.getAllAppDirs();
+
   console.log(themeChalk.section("📁 Config File:"));
   console.log(themeChalk.textMuted(`   Path: ${configPath}`));
   console.log(themeChalk.textMuted(`   Exists: ${existsSync(configPath) ? "Yes" : "No"}`));
+
+  console.log(themeChalk.section("\n🗂️  XDG Directory Structure:"));
+  console.log(themeChalk.textMuted(`   Configuration: ${xdgDirs['config']}`));
+  console.log(themeChalk.textMuted(`   Data: ${xdgDirs['data']}`));
+  console.log(themeChalk.textMuted(`   Cache: ${xdgDirs['cache']}`));
+  console.log(themeChalk.textMuted(`   State: ${xdgDirs['state']}`));
 
   console.log(themeChalk.section("\n🔧 Settings:"));
   console.log(themeChalk.textMuted(`   Extensions Directory: ${config.extensionsDir}`));
@@ -201,6 +229,29 @@ async function handleJoke() {
   console.log(themeChalk.header("\n🎭 Dad Joke\n"));
   const joke = await dadJokeService.getRandomJoke();
   console.log(themeChalk.accent(joke));
+  console.log("");
+}
+
+async function handleMigrate() {
+  console.log(themeChalk.header("\n🔄 XDG Directory Structure\n"));
+  
+  // Import XDG paths for display
+  const { XDGPaths } = await import("../utils/xdg-paths.js");
+  const xdgDirs = XDGPaths.getAllAppDirs();
+  
+  console.log(themeChalk.section("📁 XDG Directory Structure:"));
+  console.log(themeChalk.textMuted(`   Configuration: ${xdgDirs['config']}`));
+  console.log(themeChalk.textMuted(`   Data: ${xdgDirs['data']}`));
+  console.log(themeChalk.textMuted(`   Cache: ${xdgDirs['cache']}`));
+  console.log(themeChalk.textMuted(`   State: ${xdgDirs['state']}`));
+  
+  console.log(themeChalk.section("\n💡 XDG Benefits:"));
+  console.log(themeChalk.textMuted("   • Follows XDG Base Directory Specification"));
+  console.log(themeChalk.textMuted("   • Better integration with Linux/Unix systems"));
+  console.log(themeChalk.textMuted("   • User can customize paths via environment variables"));
+  console.log(themeChalk.textMuted("   • Clear separation of config, data, cache, and state"));
+  console.log(themeChalk.textMuted("   • Run 'rc --setup' to create XDG directory structure"));
+  
   console.log("");
 }
 

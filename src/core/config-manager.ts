@@ -1,43 +1,38 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
-import { join, dirname } from "path";
-import { homedir } from "os";
+import { dirname } from "path";
 import yaml from "js-yaml";
 import type { Config } from "../types/index.js";
+import { XDGPaths } from "../utils/xdg-paths.js";
 
 export class ConfigManager {
   private configPath: string;
   private config: Config;
 
   constructor() {
-    // Follow XDG base directory spec
-    const xdgConfigHome = process.env["XDG_CONFIG_HOME"] || join(homedir(), ".config");
-    this.configPath = join(xdgConfigHome, "rc", "config.yaml");
-
+    this.configPath = XDGPaths.getConfigFile();
     this.config = this.loadConfig();
   }
 
   private loadConfig(): Config {
     const defaultConfig: Config = {
-      extensionsDir: join(homedir(), ".rc", "extensions"),
+      extensionsDir: XDGPaths.getExtensionsDir(),
       defaultRunner: "node",
       enableLogging: true,
       darkMode: undefined, // undefined means auto-detect
     };
 
-    if (!existsSync(this.configPath)) {
-      // Don't create config file automatically - return default config only
-      return defaultConfig;
+    // Load XDG config if it exists
+    if (existsSync(this.configPath)) {
+      try {
+        const configContent = readFileSync(this.configPath, "utf8");
+        const userConfig = yaml.load(configContent) as Partial<Config>;
+        return { ...defaultConfig, ...userConfig };
+      } catch (error) {
+        console.warn(`Warning: Could not load config from ${this.configPath}:`, error);
+      }
     }
 
-    try {
-      const configContent = readFileSync(this.configPath, "utf8");
-      const userConfig = yaml.load(configContent) as Partial<Config>;
-
-      return { ...defaultConfig, ...userConfig };
-    } catch (error) {
-      console.warn(`Warning: Could not load config from ${this.configPath}:`, error);
-      return defaultConfig;
-    }
+    return defaultConfig;
   }
 
   private saveConfig(config: Config): void {
@@ -68,12 +63,20 @@ export class ConfigManager {
   }
 
   createComprehensiveConfig(extensionsDir: string): void {
+    const xdgDirs = XDGPaths.getAllAppDirs();
     const comprehensiveConfigContent = `# Rodrigo's CLI Configuration
 # This file contains all available configuration options for rc
 # Edit this file to customize rc's behavior
+#
+# rc follows the XDG Base Directory Specification for file organization:
+# - Configuration: ${xdgDirs['config']}
+# - Extensions: ${xdgDirs['extensions']}
+# - Cache: ${xdgDirs['cache']}
+# - State: ${xdgDirs['state']}
 
 # Directory where your extensions are stored
 # This is where rc will look for your custom commands
+# Default: ${XDGPaths.getExtensionsDir()}
 # You can change this to any directory you prefer
 extensionsDir: ${extensionsDir}
 
@@ -139,7 +142,7 @@ darkMode: null
   }
 
   getExtensionsDir(): string {
-    return this.config.extensionsDir || join(process.cwd(), "examples", "extensions");
+    return this.config.extensionsDir || XDGPaths.getExtensionsDir();
   }
 
   getDefaultRunner(): string {
