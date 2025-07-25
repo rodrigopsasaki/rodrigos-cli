@@ -338,20 +338,6 @@ src/
 4. Add tests
 5. Submit a pull request
 
-## 📄 License
+## ⚖️ License
 
-MIT License - see LICENSE file for details.
-
-## 🎯 Philosophy
-
-This CLI framework follows these principles:
-
-- **Zero boilerplate**: Just drop a script into a folder and it works
-- **Shell-native**: Everything feels like it belongs in your terminal
-- **Runtime-flexible**: Use whatever language you're comfortable with
-- **Composable**: Build complex workflows from simple pieces
-- **Delightful DX**: Autocomplete, help, and dad jokes included
-
----
-
-Built with ❤️ by Rodrigo Sasaki
+MIT © [Rodrigo Sasaki](https://github.com/rodrigopsasaki)
