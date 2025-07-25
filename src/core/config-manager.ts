@@ -53,6 +53,10 @@ export class ConfigManager {
     }
   }
 
+  getConfigPath(): string {
+    return this.configPath;
+  }
+
   getConfig(): Config {
     return { ...this.config };
   }
