@@ -10,7 +10,7 @@
   "scripts": {
     "build": "tsc",
     "bundle": "esbuild src/bin/rc.ts --bundle --platform=node --target=node18 --outfile=dist/bin/rc.js --format=esm",
-    "package": "pkg dist/bin/rc.js --targets node18-linux-x64,node18-macos-x64,node18-win-x64 --outpath dist/",
+
     "dev": "tsx src/bin/rc.ts",
     "test": "vitest",
     "test:watch": "vitest --watch",
@@ -49,8 +49,7 @@
     "prettier": "^3.1.0",
     "tsx": "^4.7.0",
     "typescript": "^5.3.0",
-    "vitest": "^1.0.0",
-    "pkg": "^5.8.0"
+        "vitest": "^1.0.0"
   },
   "engines": {
     "node": ">=18.0.0"
