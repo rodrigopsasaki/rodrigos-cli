@@ -10,7 +10,6 @@
   "scripts": {
     "build": "tsc",
     "bundle": "esbuild src/bin/rc.ts --bundle --platform=node --target=node18 --outfile=dist/bin/rc.js --format=esm",
-
     "dev": "tsx src/bin/rc.ts",
     "test": "vitest",
     "test:watch": "vitest --watch",
@@ -36,12 +35,14 @@
     "chalk": "^5.3.0",
     "commander": "^11.1.0",
     "figlet": "^1.7.0",
-    "js-yaml": "^4.1.0"
+    "js-yaml": "^4.1.0",
+    "node-fetch": "^3.3.2"
   },
   "devDependencies": {
     "@types/figlet": "^1.5.8",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.0.0",
+    "@types/node-fetch": "^2.6.12",
     "@typescript-eslint/eslint-plugin": "^6.15.0",
     "@typescript-eslint/parser": "^6.15.0",
     "esbuild": "^0.19.12",
@@ -49,7 +50,7 @@
     "prettier": "^3.1.0",
     "tsx": "^4.7.0",
     "typescript": "^5.3.0",
-        "vitest": "^1.0.0"
+    "vitest": "^1.0.0"
   },
   "engines": {
     "node": ">=18.0.0"

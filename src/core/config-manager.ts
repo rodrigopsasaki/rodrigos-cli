@@ -21,6 +21,7 @@ export class ConfigManager {
       extensionsDir: join(homedir(), ".rc", "extensions"),
       defaultRunner: "node",
       enableLogging: true,
+      darkMode: undefined, // undefined means auto-detect
     };
 
     if (!existsSync(this.configPath)) {
@@ -76,5 +77,9 @@ export class ConfigManager {
 
   isLoggingEnabled(): boolean {
     return this.config.enableLogging ?? true;
+  }
+
+  isDarkMode(): boolean | undefined {
+    return this.config.darkMode;
   }
 }

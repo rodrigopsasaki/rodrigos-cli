@@ -159,3 +159,6 @@ rc
 # Optional: Uncomment if you want to ignore test output
 # test-results/
 # test-reports/ 
+
+.cursorrules
+prompts/

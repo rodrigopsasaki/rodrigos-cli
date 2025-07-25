@@ -34,6 +34,7 @@ export interface Config {
   extensionsDir?: string;
   defaultRunner?: string;
   enableLogging?: boolean;
+  darkMode?: boolean | undefined;
 }
 
 export interface CompletionSuggestion {

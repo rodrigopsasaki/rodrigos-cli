@@ -6,7 +6,7 @@ import { ExtensionLoader } from "../core/extension-loader.js";
 import { ConfigManager } from "../core/config-manager.js";
 import { DadJokeService } from "../utils/dad-joke-service.js";
 import { CompletionService } from "../core/completion-service.js";
-import { chalk } from "../utils/chalk.js";
+import { themeChalk } from "../utils/chalk.js";
 import type { Extension } from "../types/index.js";
 
 const program = new Command();
@@ -37,37 +37,43 @@ if (process.argv.includes("--complete")) {
 
 // Default action - show config info when no arguments provided
 program.action(async (options) => {
+  // Initialize theme based on config
+  const darkMode = configManager.isDarkMode();
+  if (darkMode !== undefined) {
+    themeChalk.setDarkMode(darkMode);
+  }
+
   if (process.argv.length === 2) {
-    console.log(chalk.cyan.bold("\n🤖 Rodrigo's CLI\n"));
+    console.log(themeChalk.header("\n🤖 Rodrigo's CLI\n"));
 
     // Show current configuration
     const config = configManager.getConfig();
     const configPath = configManager.getConfigPath();
 
-    console.log(chalk.yellow("📁 Configuration:"));
-    console.log(chalk.gray(`   Config file: ${configPath}`));
-    console.log(chalk.gray(`   Extensions dir: ${config.extensionsDir}`));
-    console.log(chalk.gray(`   Default runner: ${config.defaultRunner}`));
-    console.log(chalk.gray(`   Logging enabled: ${config.enableLogging}`));
+    console.log(themeChalk.section("📁 Configuration:"));
+    console.log(themeChalk.textMuted(`   Config file: ${configPath}`));
+    console.log(themeChalk.textMuted(`   Extensions dir: ${config.extensionsDir}`));
+    console.log(themeChalk.textMuted(`   Default runner: ${config.defaultRunner}`));
+    console.log(themeChalk.textMuted(`   Logging enabled: ${config.enableLogging}`));
 
     // Check if extensions directory exists and has extensions
     const extensionsDir = configManager.getExtensionsDir();
     const hasExtensions = await extensionLoader.loadExtensions().then((exts) => exts.length > 0);
 
-    console.log(chalk.yellow("\n📦 Extensions:"));
+    console.log(themeChalk.section("\n📦 Extensions:"));
     if (hasExtensions) {
-      console.log(chalk.green(`   ✅ Found extensions in: ${extensionsDir}`));
-      console.log(chalk.gray('   Run "rc help" to see available commands'));
+      console.log(themeChalk.status(`   ✅ Found extensions in: ${extensionsDir}`));
+      console.log(themeChalk.textMuted('   Run "rc help" to see available commands'));
     } else {
-      console.log(chalk.red(`   ❌ No extensions found in: ${extensionsDir}`));
-      console.log(chalk.gray('   Run "rc --setup" to create example extensions'));
+      console.log(themeChalk.statusError(`   ❌ No extensions found in: ${extensionsDir}`));
+      console.log(themeChalk.textMuted('   Run "rc --setup" to create example extensions'));
     }
 
-    console.log(chalk.yellow("\n🚀 Quick Start:"));
-    console.log(chalk.gray("   rc help              # Show available commands"));
-    console.log(chalk.gray("   rc --setup           # Create example extensions"));
-    console.log(chalk.gray("   rc --config          # Show detailed config info"));
-    console.log(chalk.gray("   rc --joke            # Show a dad joke"));
+    console.log(themeChalk.section("\n🚀 Quick Start:"));
+    console.log(themeChalk.textMuted("   rc help              # Show available commands"));
+    console.log(themeChalk.textMuted("   rc --setup           # Create example extensions"));
+    console.log(themeChalk.textMuted("   rc --config          # Show detailed config info"));
+    console.log(themeChalk.textMuted("   rc --joke            # Show a dad joke"));
     console.log("");
   } else {
     // Handle specific options
@@ -83,7 +89,7 @@ program.action(async (options) => {
 
 // Handler functions
 async function handleSetup() {
-  console.log(chalk.cyan.bold("\n🔧 Setting up Rodrigo's CLI...\n"));
+  console.log(themeChalk.header("\n🔧 Setting up Rodrigo's CLI...\n"));
 
   try {
     // Get user's home directory for extensions
@@ -93,23 +99,23 @@ async function handleSetup() {
 
     const userExtensionsDir = join(homedir(), ".rc", "extensions");
 
-    console.log(chalk.yellow("📁 Creating extensions directory..."));
+    console.log(themeChalk.section("📁 Creating extensions directory..."));
     if (!existsSync(userExtensionsDir)) {
       mkdirSync(userExtensionsDir, { recursive: true });
-      console.log(chalk.green(`   ✅ Created: ${userExtensionsDir}`));
+      console.log(themeChalk.status(`   ✅ Created: ${userExtensionsDir}`));
     } else {
-      console.log(chalk.gray(`   📁 Already exists: ${userExtensionsDir}`));
+      console.log(themeChalk.textMuted(`   📁 Already exists: ${userExtensionsDir}`));
     }
 
     // Copy example extensions
     const exampleExtensionsDir = join(process.cwd(), "examples", "extensions");
     if (existsSync(exampleExtensionsDir)) {
-      console.log(chalk.yellow("\n📦 Copying example extensions..."));
+      console.log(themeChalk.section("\n📦 Copying example extensions..."));
       await copyDirectory(exampleExtensionsDir, userExtensionsDir);
-      console.log(chalk.green("   ✅ Example extensions copied"));
+      console.log(themeChalk.status("   ✅ Example extensions copied"));
 
       // Also copy any directory-level sidecar configs that might be in the examples
-      console.log(chalk.yellow("\n📋 Copying directory configs..."));
+      console.log(themeChalk.section("\n📋 Copying directory configs..."));
       const exampleDirs = readdirSync(exampleExtensionsDir).filter((item: string) =>
         statSync(join(exampleExtensionsDir, item)).isDirectory(),
       );
@@ -127,49 +133,49 @@ async function handleSetup() {
           const srcConfig = join(exampleDirPath, config);
           const destConfig = join(userDirPath, config);
           copyFileSync(srcConfig, destConfig);
-          console.log(chalk.gray(`   📄 Copied: ${config}`));
+          console.log(themeChalk.textMuted(`   📄 Copied: ${config}`));
         }
       }
     }
 
     // Update config to use user's extensions directory
-    console.log(chalk.yellow("\n⚙️  Updating configuration..."));
+    console.log(themeChalk.section("\n⚙️  Updating configuration..."));
     configManager.updateConfig({ extensionsDir: userExtensionsDir });
-    console.log(chalk.green("   ✅ Configuration updated"));
+    console.log(themeChalk.status("   ✅ Configuration updated"));
 
-    console.log(chalk.green("\n🎉 Setup complete!"));
-    console.log(chalk.gray('   Run "rc" to see your extensions'));
-    console.log(chalk.gray('   Run "rc help" to see available commands'));
+    console.log(themeChalk.status("\n🎉 Setup complete!"));
+    console.log(themeChalk.textMuted('   Run "rc" to see your extensions'));
+    console.log(themeChalk.textMuted('   Run "rc help" to see available commands'));
     console.log("");
   } catch (error) {
-    console.error(chalk.red("❌ Setup failed:"), error);
+    console.error(themeChalk.statusError("❌ Setup failed:"), error);
     process.exit(1);
   }
 }
 
 async function handleConfig() {
-  console.log(chalk.cyan.bold("\n⚙️  Configuration Details\n"));
+  console.log(themeChalk.header("\n⚙️  Configuration Details\n"));
 
   const config = configManager.getConfig();
   const configPath = configManager.getConfigPath();
 
-  console.log(chalk.yellow("📁 Config File:"));
-  console.log(chalk.gray(`   Path: ${configPath}`));
-  console.log(chalk.gray(`   Exists: ${existsSync(configPath) ? "Yes" : "No"}`));
+  console.log(themeChalk.section("📁 Config File:"));
+  console.log(themeChalk.textMuted(`   Path: ${configPath}`));
+  console.log(themeChalk.textMuted(`   Exists: ${existsSync(configPath) ? "Yes" : "No"}`));
 
-  console.log(chalk.yellow("\n🔧 Settings:"));
-  console.log(chalk.gray(`   Extensions Directory: ${config.extensionsDir}`));
-  console.log(chalk.gray(`   Default Runner: ${config.defaultRunner}`));
-  console.log(chalk.gray(`   Logging Enabled: ${config.enableLogging}`));
+  console.log(themeChalk.section("\n🔧 Settings:"));
+  console.log(themeChalk.textMuted(`   Extensions Directory: ${config.extensionsDir}`));
+  console.log(themeChalk.textMuted(`   Default Runner: ${config.defaultRunner}`));
+  console.log(themeChalk.textMuted(`   Logging Enabled: ${config.enableLogging}`));
 
   // Show extensions info
   const extensions = await extensionLoader.loadExtensions();
-  console.log(chalk.yellow("\n📦 Extensions:"));
-  console.log(chalk.gray(`   Found: ${extensions.length} extension(s)`));
+  console.log(themeChalk.section("\n📦 Extensions:"));
+  console.log(themeChalk.textMuted(`   Found: ${extensions.length} extension(s)`));
 
   if (extensions.length > 0) {
     for (const ext of extensions) {
-      console.log(chalk.gray(`   - ${ext.command} (${ext.scriptType})`));
+      console.log(themeChalk.textMuted(`   - ${ext.command} (${ext.scriptType})`));
     }
   }
 
@@ -177,9 +183,9 @@ async function handleConfig() {
 }
 
 async function handleJoke() {
-  console.log(chalk.cyan.bold("\n🎭 Dad Joke\n"));
+  console.log(themeChalk.header("\n🎭 Dad Joke\n"));
   const joke = await dadJokeService.getRandomJoke();
-  console.log(chalk.yellow(joke));
+  console.log(themeChalk.accent(joke));
   console.log("");
 }
 
@@ -213,11 +219,11 @@ async function loadExtensions() {
 
     // Debug: Show loaded extensions
     if (process.argv.includes("--verbose") || process.argv.includes("--debug")) {
-      console.log(chalk.blue("🔍 [DEBUG] Loaded extensions:"));
+      console.log(themeChalk.debug("🔍 [DEBUG] Loaded extensions:"));
       for (const ext of extensions) {
-        console.log(chalk.blue(`🔍 [DEBUG] - ${ext.command} -> ${ext.scriptPath}`));
+        console.log(themeChalk.debug(`🔍 [DEBUG] - ${ext.command} -> ${ext.scriptPath}`));
       }
-      console.log(chalk.blue("🔍 [DEBUG] ---"));
+      console.log(themeChalk.debug("🔍 [DEBUG] ---"));
     }
 
     // Group extensions by their main command
@@ -262,17 +268,17 @@ async function loadExtensions() {
             const isVerbose = process.argv.includes("--verbose") || process.argv.includes("--debug");
 
             if (isVerbose) {
-              console.log(chalk.blue(`🔍 [DEBUG] Executing extension: ${extension.command}`));
-              console.log(chalk.blue(`🔍 [DEBUG] Script path: ${extension.scriptPath}`));
-              console.log(chalk.blue(`🔍 [DEBUG] Script type: ${extension.scriptType}`));
-              console.log(chalk.blue(`🔍 [DEBUG] Runner: ${extension.config?.runner || "default"}`));
-              console.log(chalk.blue(`🔍 [DEBUG] Options: ${JSON.stringify(options, null, 2)}`));
-              console.log(chalk.blue("🔍 [DEBUG] ---"));
+              console.log(themeChalk.debug(`🔍 [DEBUG] Executing extension: ${extension.command}`));
+              console.log(themeChalk.debug(`🔍 [DEBUG] Script path: ${extension.scriptPath}`));
+              console.log(themeChalk.debug(`🔍 [DEBUG] Script type: ${extension.scriptType}`));
+              console.log(themeChalk.debug(`🔍 [DEBUG] Runner: ${extension.config?.runner || "default"}`));
+              console.log(themeChalk.debug(`🔍 [DEBUG] Options: ${JSON.stringify(options, null, 2)}`));
+              console.log(themeChalk.debug("🔍 [DEBUG] ---"));
             }
 
             await extensionLoader.executeExtension(extension, options, isVerbose);
           } catch (error) {
-            console.error(chalk.red(`Error executing ${extension.command}:`), error);
+            console.error(themeChalk.statusError(`Error executing ${extension.command}:`), error);
             process.exit(1);
           }
         });
@@ -330,17 +336,17 @@ async function loadExtensions() {
               const isVerbose = process.argv.includes("--verbose") || process.argv.includes("--debug");
 
               if (isVerbose) {
-                console.log(chalk.blue(`🔍 [DEBUG] Executing extension: ${extension.command}`));
-                console.log(chalk.blue(`🔍 [DEBUG] Script path: ${extension.scriptPath}`));
-                console.log(chalk.blue(`🔍 [DEBUG] Script type: ${extension.scriptType}`));
-                console.log(chalk.blue(`🔍 [DEBUG] Runner: ${extension.config?.runner || "default"}`));
-                console.log(chalk.blue(`🔍 [DEBUG] Options: ${JSON.stringify(options, null, 2)}`));
-                console.log(chalk.blue("🔍 [DEBUG] ---"));
+                console.log(themeChalk.debug(`🔍 [DEBUG] Executing extension: ${extension.command}`));
+                console.log(themeChalk.debug(`🔍 [DEBUG] Script path: ${extension.scriptPath}`));
+                console.log(themeChalk.debug(`🔍 [DEBUG] Script type: ${extension.scriptType}`));
+                console.log(themeChalk.debug(`🔍 [DEBUG] Runner: ${extension.config?.runner || "default"}`));
+                console.log(themeChalk.debug(`🔍 [DEBUG] Options: ${JSON.stringify(options, null, 2)}`));
+                console.log(themeChalk.debug("🔍 [DEBUG] ---"));
               }
 
               await extensionLoader.executeExtension(extension, options, isVerbose);
             } catch (error) {
-              console.error(chalk.red(`Error executing ${extension.command}:`), error);
+              console.error(themeChalk.statusError(`Error executing ${extension.command}:`), error);
               process.exit(1);
             }
           });
@@ -348,7 +354,7 @@ async function loadExtensions() {
       }
     }
   } catch (error) {
-    console.error(chalk.red("Error loading extensions:"), error);
+    console.error(themeChalk.statusError("Error loading extensions:"), error);
     process.exit(1);
   }
 }
@@ -368,7 +374,7 @@ program
   .command("help")
   .description("Show detailed help with all available commands")
   .action(async () => {
-    console.log(chalk.cyan.bold("\n📚 Available Commands\n"));
+    console.log(themeChalk.header("\n📚 Available Commands\n"));
 
     const extensions = await extensionLoader.loadExtensions();
     const commandTree = buildCommandTree(extensions);
@@ -410,9 +416,9 @@ function printCommandTree(tree: Record<string, any>, depth: number) {
   for (const [command, info] of Object.entries(tree)) {
     const hasChildren = Object.keys(info.children).length > 0;
     const icon = hasChildren ? "📁" : "⚡";
-    const desc = info.description ? chalk.gray(` - ${info.description}`) : "";
+    const desc = info.description ? themeChalk.textMuted(` - ${info.description}`) : "";
 
-    console.log(`${indent}${icon} ${chalk.cyan(command)}${desc}`);
+    console.log(`${indent}${icon} ${themeChalk.primary(command)}${desc}`);
 
     if (hasChildren) {
       printCommandTree(info.children, depth + 1);
@@ -427,6 +433,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(chalk.red("Fatal error:"), error);
+  console.error(themeChalk.statusError("Fatal error:"), error);
   process.exit(1);
 });
