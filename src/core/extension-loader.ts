@@ -42,8 +42,22 @@ export class ExtensionLoader {
         const stat = statSync(itemPath);
         
         if (stat.isDirectory()) {
-          // Recursively discover extensions in subdirectories
+          // Check for directory-level sidecar config
+          const dirConfig = await this.loadSidecarConfig(itemPath);
           const subCommand = baseCommand ? `${baseCommand} ${item}` : item;
+          
+          // If directory has a sidecar config, create a virtual extension for the command group
+          if (dirConfig) {
+            const virtualExtension: Extension = {
+              command: subCommand,
+              scriptPath: itemPath, // Use directory path as script path for virtual extensions
+              config: dirConfig,
+              scriptType: 'js', // Virtual extensions are treated as JS for now
+            };
+            extensions.push(virtualExtension);
+          }
+          
+          // Recursively discover extensions in subdirectories
           const subExtensions = await this.discoverExtensions(itemPath, subCommand);
           extensions.push(...subExtensions);
         } else if (this.isExecutableFile(item)) {
@@ -115,9 +129,22 @@ export class ExtensionLoader {
     }
   }
 
-  private async loadSidecarConfig(scriptPath: string): Promise<ExtensionConfig | undefined> {
-    const yamlPath = scriptPath.replace(extname(scriptPath), '.yaml');
-    const jsonPath = scriptPath.replace(extname(scriptPath), '.json');
+  private async loadSidecarConfig(path: string): Promise<ExtensionConfig | undefined> {
+    // For directories, look for config files with the directory name
+    const isDirectory = statSync(path).isDirectory();
+    let yamlPath: string;
+    let jsonPath: string;
+    
+    if (isDirectory) {
+      // For directories, look for config files named after the directory
+      const dirName = basename(path);
+      yamlPath = join(path, `${dirName}.yaml`);
+      jsonPath = join(path, `${dirName}.json`);
+    } else {
+      // For files, replace the extension
+      yamlPath = path.replace(extname(path), '.yaml');
+      jsonPath = path.replace(extname(path), '.json');
+    }
 
     // Try YAML first, then JSON
     for (const configPath of [yamlPath, jsonPath]) {

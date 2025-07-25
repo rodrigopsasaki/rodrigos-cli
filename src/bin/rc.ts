@@ -89,7 +89,7 @@ async function handleSetup() {
     // Get user's home directory for extensions
     const { homedir } = await import('os');
     const { join } = await import('path');
-    const { mkdirSync } = await import('fs');
+    const { mkdirSync, readdirSync, statSync, copyFileSync } = await import('fs');
     
     const userExtensionsDir = join(homedir(), '.dotfiles', 'rc', 'extensions');
     
@@ -107,6 +107,29 @@ async function handleSetup() {
       console.log(chalk.yellow('\n📦 Copying example extensions...'));
       await copyDirectory(exampleExtensionsDir, userExtensionsDir);
       console.log(chalk.green('   ✅ Example extensions copied'));
+      
+      // Also copy any directory-level sidecar configs that might be in the examples
+      console.log(chalk.yellow('\n📋 Copying directory configs...'));
+      const exampleDirs = readdirSync(exampleExtensionsDir).filter((item: string) => 
+        statSync(join(exampleExtensionsDir, item)).isDirectory()
+      );
+      
+      for (const dir of exampleDirs) {
+        const exampleDirPath = join(exampleExtensionsDir, dir);
+        const userDirPath = join(userExtensionsDir, dir);
+        
+        // Look for directory-level configs (e.g., gen.yaml, gen.json)
+        const dirConfigs = readdirSync(exampleDirPath).filter((item: string) => 
+          item === `${dir}.yaml` || item === `${dir}.json`
+        );
+        
+        for (const config of dirConfigs) {
+          const srcConfig = join(exampleDirPath, config);
+          const destConfig = join(userDirPath, config);
+          copyFileSync(srcConfig, destConfig);
+          console.log(chalk.gray(`   📄 Copied: ${config}`));
+        }
+      }
     }
     
     // Update config to use user's extensions directory
@@ -258,8 +281,30 @@ async function loadExtensions() {
         // Multiple commands with same prefix, create subcommands
         const mainCmd = program.command(mainCommand);
         
+        // Check if there's a virtual extension for the main command
+        const virtualExtension = groupExtensions.find(ext => ext.command === mainCommand);
+        if (virtualExtension) {
+          if (virtualExtension.config?.description) {
+            mainCmd.description(virtualExtension.config.description);
+          }
+          
+          // Add options from virtual extension's sidecar config
+          if (virtualExtension.config?.options) {
+            for (const option of virtualExtension.config.options) {
+              const optionStr = option.short 
+                ? `-${option.short}, --${option.name} <${option.name}>`
+                : `--${option.name} <${option.name}>`;
+              
+              mainCmd.option(optionStr, option.description);
+            }
+          }
+        }
+        
         for (const extension of groupExtensions) {
           if (!extension) continue;
+          
+          // Skip virtual extensions when creating subcommands
+          if (extension.command === mainCommand) continue;
           
           const parts = extension.command.split(' ');
           const subCommand = parts.slice(1).join(' ');
@@ -341,7 +386,14 @@ function buildCommandTree(extensions: any[]) {
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
       if (!current[part]) {
-        current[part] = { description: ext.config?.description, children: {} };
+        // Only set description if this is the final part (the extension itself)
+        // or if this is a virtual extension (same command as the part)
+        const shouldSetDescription = i === parts.length - 1 || ext.command === part;
+        current[part] = { 
+          description: shouldSetDescription ? ext.config?.description : undefined, 
+          children: {},
+          isVirtual: ext.command === part // Mark virtual extensions
+        };
       }
       if (i === parts.length - 1) {
         current[part].extension = ext;
