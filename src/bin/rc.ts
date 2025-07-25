@@ -138,10 +138,17 @@ async function handleSetup() {
       }
     }
 
-    // Update config to use user's extensions directory
-    console.log(themeChalk.section("\n⚙️  Updating configuration..."));
-    configManager.updateConfig({ extensionsDir: userExtensionsDir });
-    console.log(themeChalk.status("   ✅ Configuration updated"));
+    // Create comprehensive configuration file
+    console.log(themeChalk.section("\n⚙️  Creating comprehensive configuration..."));
+    
+    configManager.createComprehensiveConfig(userExtensionsDir);
+    console.log(themeChalk.status("   ✅ Comprehensive configuration created"));
+    
+    // Show the user what was created
+    console.log(themeChalk.textMuted("   📄 Config file location:"));
+    console.log(themeChalk.path(`      ${configManager.getConfigPath()}`));
+    console.log(themeChalk.textMuted("   💡 You can edit this file to customize rc's behavior"));
+    console.log(themeChalk.textMuted("   📖 The config file includes detailed comments and examples"));
 
     console.log(themeChalk.status("\n🎉 Setup complete!"));
     console.log(themeChalk.textMuted('   Run "rc" to see your extensions'));
@@ -167,6 +174,7 @@ async function handleConfig() {
   console.log(themeChalk.textMuted(`   Extensions Directory: ${config.extensionsDir}`));
   console.log(themeChalk.textMuted(`   Default Runner: ${config.defaultRunner}`));
   console.log(themeChalk.textMuted(`   Logging Enabled: ${config.enableLogging}`));
+  console.log(themeChalk.textMuted(`   Dark Mode: ${config.darkMode === undefined ? "Auto-detect" : config.darkMode ? "Forced Dark" : "Forced Light"}`));
 
   // Show extensions info
   const extensions = await extensionLoader.loadExtensions();
@@ -178,6 +186,13 @@ async function handleConfig() {
       console.log(themeChalk.textMuted(`   - ${ext.command} (${ext.scriptType})`));
     }
   }
+
+  console.log(themeChalk.section("\n💡 Configuration Options:"));
+  console.log(themeChalk.textMuted("   • extensionsDir: Directory where your extensions are stored"));
+  console.log(themeChalk.textMuted("   • defaultRunner: Default script runner (node, python, ruby, php, bash, sh)"));
+  console.log(themeChalk.textMuted("   • enableLogging: Enable/disable debug logging"));
+  console.log(themeChalk.textMuted("   • darkMode: Theme mode (true=dark, false=light, null=auto-detect)"));
+  console.log(themeChalk.textMuted("   • Run 'rc --setup' to create a comprehensive config file with examples"));
 
   console.log("");
 }
