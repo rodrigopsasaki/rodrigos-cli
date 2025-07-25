@@ -1,10 +1,10 @@
-import { readdirSync, readFileSync, existsSync, statSync } from 'fs';
-import { join, extname, basename } from 'path';
-import { spawn } from 'child_process';
-import yaml from 'js-yaml';
-import type { Extension, ExtensionConfig, ExecutionContext } from '../types/index.js';
-import { ConfigManager } from './config-manager.js';
-import { chalk } from '../utils/chalk.js';
+import { readdirSync, readFileSync, existsSync, statSync } from "fs";
+import { join, extname, basename } from "path";
+import { spawn } from "child_process";
+import yaml from "js-yaml";
+import type { Extension, ExtensionConfig, ExecutionContext } from "../types/index.js";
+import { ConfigManager } from "./config-manager.js";
+import { chalk } from "../utils/chalk.js";
 
 export class ExtensionLoader {
   private configManager: ConfigManager;
@@ -27,7 +27,7 @@ export class ExtensionLoader {
     return this.extensionsCache;
   }
 
-  private async discoverExtensions(dir: string, baseCommand = ''): Promise<Extension[]> {
+  private async discoverExtensions(dir: string, baseCommand = ""): Promise<Extension[]> {
     const extensions: Extension[] = [];
 
     if (!existsSync(dir)) {
@@ -36,27 +36,27 @@ export class ExtensionLoader {
 
     try {
       const items = readdirSync(dir);
-      
+
       for (const item of items) {
         const itemPath = join(dir, item);
         const stat = statSync(itemPath);
-        
+
         if (stat.isDirectory()) {
           // Check for directory-level sidecar config
           const dirConfig = await this.loadSidecarConfig(itemPath);
           const subCommand = baseCommand ? `${baseCommand} ${item}` : item;
-          
+
           // If directory has a sidecar config, create a virtual extension for the command group
           if (dirConfig) {
             const virtualExtension: Extension = {
               command: subCommand,
               scriptPath: itemPath, // Use directory path as script path for virtual extensions
               config: dirConfig,
-              scriptType: 'js', // Virtual extensions are treated as JS for now
+              scriptType: "js", // Virtual extensions are treated as JS for now
             };
             extensions.push(virtualExtension);
           }
-          
+
           // Recursively discover extensions in subdirectories
           const subExtensions = await this.discoverExtensions(itemPath, subCommand);
           extensions.push(...subExtensions);
@@ -79,7 +79,7 @@ export class ExtensionLoader {
   }
 
   private isExecutableFile(filename: string): boolean {
-    const executableExtensions = ['.js', '.ts', '.cjs', '.sh', '.py', '.rb', '.php'];
+    const executableExtensions = [".js", ".ts", ".cjs", ".sh", ".py", ".rb", ".php"];
     const ext = extname(filename);
     return executableExtensions.includes(ext);
   }
@@ -92,7 +92,7 @@ export class ExtensionLoader {
     try {
       const scriptType = this.getScriptType(scriptPath);
       const config = await this.loadSidecarConfig(scriptPath);
-      
+
       return {
         command,
         scriptPath,
@@ -107,25 +107,25 @@ export class ExtensionLoader {
     }
   }
 
-  private getScriptType(scriptPath: string): Extension['scriptType'] {
+  private getScriptType(scriptPath: string): Extension["scriptType"] {
     const ext = extname(scriptPath);
     switch (ext) {
-      case '.js':
-        return 'js';
-      case '.ts':
-        return 'ts';
-      case '.cjs':
-        return 'js';
-      case '.sh':
-        return 'sh';
-      case '.py':
-        return 'py';
-      case '.rb':
-        return 'rb';
-      case '.php':
-        return 'php';
+      case ".js":
+        return "js";
+      case ".ts":
+        return "ts";
+      case ".cjs":
+        return "js";
+      case ".sh":
+        return "sh";
+      case ".py":
+        return "py";
+      case ".rb":
+        return "rb";
+      case ".php":
+        return "php";
       default:
-        return 'js';
+        return "js";
     }
   }
 
@@ -134,7 +134,7 @@ export class ExtensionLoader {
     const isDirectory = statSync(path).isDirectory();
     let yamlPath: string;
     let jsonPath: string;
-    
+
     if (isDirectory) {
       // For directories, look for config files named after the directory
       const dirName = basename(path);
@@ -142,16 +142,16 @@ export class ExtensionLoader {
       jsonPath = join(path, `${dirName}.json`);
     } else {
       // For files, replace the extension
-      yamlPath = path.replace(extname(path), '.yaml');
-      jsonPath = path.replace(extname(path), '.json');
+      yamlPath = path.replace(extname(path), ".yaml");
+      jsonPath = path.replace(extname(path), ".json");
     }
 
     // Try YAML first, then JSON
     for (const configPath of [yamlPath, jsonPath]) {
       if (existsSync(configPath)) {
         try {
-          const configContent = readFileSync(configPath, 'utf8');
-          if (configPath.endsWith('.yaml')) {
+          const configContent = readFileSync(configPath, "utf8");
+          if (configPath.endsWith(".yaml")) {
             return yaml.load(configContent) as ExtensionConfig;
           } else {
             return JSON.parse(configContent) as ExtensionConfig;
@@ -179,27 +179,27 @@ export class ExtensionLoader {
     let runner = extension.config?.runner;
     if (!runner) {
       switch (extension.scriptType) {
-        case 'js':
-        case 'ts':
-          runner = 'node';
+        case "js":
+        case "ts":
+          runner = "node";
           break;
-        case 'sh':
-          runner = 'bash';
+        case "sh":
+          runner = "bash";
           break;
-        case 'py':
-          runner = 'python3';
+        case "py":
+          runner = "python3";
           break;
-        case 'rb':
-          runner = 'ruby';
+        case "rb":
+          runner = "ruby";
           break;
-        case 'php':
-          runner = 'php';
+        case "php":
+          runner = "php";
           break;
         default:
           runner = this.configManager.getDefaultRunner();
       }
     }
-    
+
     if (verbose) {
       console.log(chalk.blue(`🔍 [DEBUG] Building execution context:`));
       console.log(chalk.blue(`🔍 [DEBUG] - Command: ${context.command}`));
@@ -207,19 +207,19 @@ export class ExtensionLoader {
       console.log(chalk.blue(`🔍 [DEBUG] - Runner: ${runner}`));
       console.log(chalk.blue(`🔍 [DEBUG] - Environment variables: ${JSON.stringify(context.env, null, 2)}`));
     }
-    
+
     return new Promise((resolve, reject) => {
       const args = this.buildExecutionArgs(extension, runner, context);
-      
+
       if (verbose) {
         console.log(chalk.blue(`🔍 [DEBUG] Spawning process with:`));
         console.log(chalk.blue(`🔍 [DEBUG] - Runner: ${runner}`));
         console.log(chalk.blue(`🔍 [DEBUG] - Args: ${JSON.stringify(args)}`));
-        console.log(chalk.blue('🔍 [DEBUG] ---'));
+        console.log(chalk.blue("🔍 [DEBUG] ---"));
       }
-      
+
       const child = spawn(runner, args, {
-        stdio: ['pipe', 'inherit', 'inherit'],
+        stdio: ["pipe", "inherit", "inherit"],
         env: { ...process.env, ...context.env },
       });
 
@@ -229,7 +229,7 @@ export class ExtensionLoader {
         child.stdin?.end();
       }
 
-      child.on('close', (code: number | null) => {
+      child.on("close", (code: number | null) => {
         if (verbose) {
           console.log(chalk.blue(`🔍 [DEBUG] Process exited with code: ${code}`));
         }
@@ -240,7 +240,7 @@ export class ExtensionLoader {
         }
       });
 
-      child.on('error', (error: Error) => {
+      child.on("error", (error: Error) => {
         if (verbose) {
           console.log(chalk.red(`🔍 [DEBUG] Process error: ${error.message}`));
         }
@@ -253,9 +253,9 @@ export class ExtensionLoader {
     const env: Record<string, string> = {};
 
     // Add RC_ prefixed environment variables
-    env['RC_COMMAND'] = extension.command;
-    env['RC_SCRIPT_PATH'] = extension.scriptPath;
-    env['RC_SCRIPT_TYPE'] = extension.scriptType;
+    env["RC_COMMAND"] = extension.command;
+    env["RC_SCRIPT_PATH"] = extension.scriptPath;
+    env["RC_SCRIPT_TYPE"] = extension.scriptType;
 
     // Add options as environment variables
     for (const [key, value] of Object.entries(options)) {
@@ -271,24 +271,24 @@ export class ExtensionLoader {
     const args: string[] = [];
 
     switch (runner) {
-      case 'node':
+      case "node":
         args.push(extension.scriptPath);
         break;
-      case 'tsx':
+      case "tsx":
         args.push(extension.scriptPath);
         break;
-      case 'bash':
-      case 'sh':
+      case "bash":
+      case "sh":
         args.push(extension.scriptPath);
         break;
-      case 'python3':
-      case 'python':
+      case "python3":
+      case "python":
         args.push(extension.scriptPath);
         break;
-      case 'ruby':
+      case "ruby":
         args.push(extension.scriptPath);
         break;
-      case 'php':
+      case "php":
         args.push(extension.scriptPath);
         break;
       default:
@@ -297,14 +297,14 @@ export class ExtensionLoader {
     }
 
     // Filter out command parts and only pass relevant arguments
-    const commandParts = extension.command.split(' ');
+    const commandParts = extension.command.split(" ");
     const filteredArgs = context.args.filter((arg, index) => {
       // Skip command parts
       if (index < commandParts.length) {
         return false;
       }
       // Keep global flags like --verbose, --debug
-      if (arg === '--verbose' || arg === '--debug') {
+      if (arg === "--verbose" || arg === "--debug") {
         return false; // Don't pass these to the script
       }
       return true;
@@ -319,4 +319,4 @@ export class ExtensionLoader {
   invalidateCache(): void {
     this.cacheValid = false;
   }
-} 
+}

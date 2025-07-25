@@ -18,11 +18,13 @@ A developer-first CLI framework that makes local commands feel native — like t
 ### Installation
 
 #### Option 1: One-liner (Recommended)
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rodrigopsasaki/rodrigos-cli/main/install.sh | bash
 ```
 
 #### Option 2: Manual installation
+
 ```bash
 # Clone the repository
 git clone https://github.com/rodrigopsasaki/rodrigos-cli.git
@@ -33,6 +35,7 @@ cd rodrigos-cli
 ```
 
 #### Option 3: Using npm scripts
+
 ```bash
 # Clone and setup
 git clone https://github.com/rodrigopsasaki/rodrigos-cli.git
@@ -49,6 +52,7 @@ rc
 ```
 
 This will show:
+
 - Configuration file location
 - Extensions directory
 - Available extensions
@@ -63,7 +67,8 @@ rc --setup
 ```
 
 This will:
-- Create your extensions directory (`~/.dotfiles/rc/extensions`)
+
+- Create your extensions directory (`~/.rc/extensions`)
 - Copy example extensions
 - Copy directory-level configs
 - Update your configuration
@@ -88,7 +93,7 @@ eval "$(rc completion fish)"
 Extensions are discovered recursively from your extensions directory:
 
 ```
-~/.dotfiles/rc/extensions/
+~/.rc/extensions/
 ├── gen/
 │   ├── gen.yaml              # Directory-level config
 │   ├── uuid.cjs
@@ -110,6 +115,7 @@ Extensions are discovered recursively from your extensions directory:
 ```
 
 This creates commands like:
+
 - `rc gen uuid`
 - `rc gen objectid`
 - `rc gen rstring`
@@ -119,14 +125,14 @@ This creates commands like:
 
 ## ⚙️ Supported Runtimes
 
-| Extension | Runner | Example |
-|-----------|--------|---------|
-| `.js` | Node.js | `runner: node` |
-| `.ts` | tsx | `runner: tsx` |
-| `.sh` | bash | `runner: bash` |
-| `.py` | python3 | `runner: python3` |
-| `.rb` | ruby | `runner: ruby` |
-| `.php` | php | `runner: php` |
+| Extension | Runner  | Example           |
+| --------- | ------- | ----------------- |
+| `.js`     | Node.js | `runner: node`    |
+| `.ts`     | tsx     | `runner: tsx`     |
+| `.sh`     | bash    | `runner: bash`    |
+| `.py`     | python3 | `runner: python3` |
+| `.rb`     | ruby    | `runner: ruby`    |
+| `.php`    | php     | `runner: php`     |
 
 ## 📋 Sidecar Configuration
 
@@ -186,7 +192,7 @@ Extensions receive context through environment variables:
 
 ```bash
 #!/bin/bash
-# ~/.dotfiles/rc/extensions/deploy.sh
+# ~/.rc/extensions/deploy.sh
 
 echo "Deploying to environment: $RC_PROFILE"
 echo "Command: $RC_COMMAND"
@@ -204,12 +210,12 @@ fi
 
 ```javascript
 #!/usr/bin/env node
-// ~/.dotfiles/rc/extensions/secret.js
+// ~/.rc/extensions/secret.js
 
-import { randomBytes } from 'crypto';
+import { randomBytes } from "crypto";
 
 const length = process.env.RC_LENGTH || 32;
-const secret = randomBytes(parseInt(length)).toString('hex');
+const secret = randomBytes(parseInt(length)).toString("hex");
 console.log(secret);
 ```
 
@@ -217,7 +223,7 @@ console.log(secret);
 
 ```python
 #!/usr/bin/bin/python3
-# ~/.dotfiles/rc/extensions/weather.py
+# ~/.rc/extensions/weather.py
 
 import os
 import sys
@@ -241,7 +247,7 @@ Configuration is stored following the XDG base directory spec:
 ~/.config/rc/config.yaml
 
 # Example configuration
-extensionsDir: ~/.dotfiles/rc/extensions
+extensionsDir: ~/.rc/extensions
 defaultRunner: node
 enableLogging: true
 ```
@@ -348,4 +354,4 @@ This CLI framework follows these principles:
 
 ---
 
-Built with ❤️ by Rodrigo Sasaki 
+Built with ❤️ by Rodrigo Sasaki

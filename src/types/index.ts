@@ -1,7 +1,7 @@
 export interface ExtensionOption {
   name: string;
   short?: string;
-  type: 'string' | 'boolean' | 'number';
+  type: "string" | "boolean" | "number";
   description?: string;
   suggestions?: string[];
   required?: boolean;
@@ -20,7 +20,7 @@ export interface Extension {
   command: string;
   scriptPath: string;
   config?: ExtensionConfig | undefined;
-  scriptType: 'js' | 'ts' | 'sh' | 'py' | 'rb' | 'php';
+  scriptType: "js" | "ts" | "sh" | "py" | "rb" | "php";
 }
 
 export interface ExecutionContext {
@@ -39,5 +39,5 @@ export interface Config {
 export interface CompletionSuggestion {
   text: string;
   description?: string | undefined;
-  type?: 'command' | 'option' | 'argument';
-} 
+  type?: "command" | "option" | "argument";
+}

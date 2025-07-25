@@ -1,5 +1,5 @@
-import type { CompletionSuggestion } from '../types/index.js';
-import { ExtensionLoader } from './extension-loader.js';
+import type { CompletionSuggestion } from "../types/index.js";
+import { ExtensionLoader } from "./extension-loader.js";
 
 export class CompletionService {
   private extensionLoader: ExtensionLoader;
@@ -8,28 +8,28 @@ export class CompletionService {
     this.extensionLoader = extensionLoader;
   }
 
-    async getSuggestions(args: string[]): Promise<CompletionSuggestion[]> {
+  async getSuggestions(args: string[]): Promise<CompletionSuggestion[]> {
     const extensions = await this.extensionLoader.loadExtensions();
     const suggestions: CompletionSuggestion[] = [];
 
     // Filter out the --complete flag and any trailing --
-    const cleanArgs = args.filter(arg => arg !== '--complete' && arg !== '--');
+    const cleanArgs = args.filter((arg) => arg !== "--complete" && arg !== "--");
 
     // If no args, suggest top-level commands
     if (cleanArgs.length === 0) {
       const topLevelCommands = new Set<string>();
       for (const ext of extensions) {
-        const firstPart = ext.command.split(' ')[0];
+        const firstPart = ext.command.split(" ")[0];
         if (firstPart) {
           topLevelCommands.add(firstPart);
         }
       }
-      
+
       for (const command of topLevelCommands) {
         if (command) {
           suggestions.push({
             text: command,
-            type: 'command',
+            type: "command",
           });
         }
       }
@@ -37,44 +37,42 @@ export class CompletionService {
     }
 
     // Find matching extensions for the current command path
-    const currentPath = cleanArgs.join(' ');
-    const matchingExtensions = extensions.filter(ext => 
-      ext.command.startsWith(currentPath + ' ')
-    );
+    const currentPath = cleanArgs.join(" ");
+    const matchingExtensions = extensions.filter((ext) => ext.command.startsWith(currentPath + " "));
 
     if (matchingExtensions.length > 0) {
       // Suggest next level commands
       const nextLevelCommands = new Set<string>();
       for (const ext of matchingExtensions) {
-        const parts = ext.command.split(' ');
+        const parts = ext.command.split(" ");
         const nextPart = parts[cleanArgs.length];
         if (nextPart) {
           nextLevelCommands.add(nextPart);
         }
       }
-      
+
       for (const command of nextLevelCommands) {
         suggestions.push({
           text: command,
-          type: 'command',
+          type: "command",
         });
       }
     } else {
       // Check if we have an exact match and suggest options
-      const exactMatch = extensions.find(ext => ext.command === currentPath);
+      const exactMatch = extensions.find((ext) => ext.command === currentPath);
       if (exactMatch?.config?.options) {
         for (const option of exactMatch.config.options) {
           suggestions.push({
             text: `--${option.name}`,
             description: option.description || undefined,
-            type: 'option',
+            type: "option",
           });
-          
+
           if (option.short) {
             suggestions.push({
               text: `-${option.short}`,
               description: option.description || undefined,
-              type: 'option',
+              type: "option",
             });
           }
         }
@@ -86,11 +84,11 @@ export class CompletionService {
 
   generateCompletionScript(shell: string): string {
     switch (shell.toLowerCase()) {
-      case 'zsh':
+      case "zsh":
         return this.generateZshCompletion();
-      case 'bash':
+      case "bash":
         return this.generateBashCompletion();
-      case 'fish':
+      case "fish":
         return this.generateFishCompletion();
       default:
         throw new Error(`Unsupported shell: ${shell}`);
@@ -158,4 +156,4 @@ end
 complete -c rc -f -a "(__fish_rc_complete)"
 `;
   }
-} 
+}

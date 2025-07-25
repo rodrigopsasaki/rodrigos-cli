@@ -1,8 +1,8 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
-import { join, dirname } from 'path';
-import { homedir } from 'os';
-import yaml from 'js-yaml';
-import type { Config } from '../types/index.js';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
+import { join, dirname } from "path";
+import { homedir } from "os";
+import yaml from "js-yaml";
+import type { Config } from "../types/index.js";
 
 export class ConfigManager {
   private configPath: string;
@@ -10,16 +10,16 @@ export class ConfigManager {
 
   constructor() {
     // Follow XDG base directory spec
-    const xdgConfigHome = process.env['XDG_CONFIG_HOME'] || join(homedir(), '.config');
-    this.configPath = join(xdgConfigHome, 'rc', 'config.yaml');
-    
+    const xdgConfigHome = process.env["XDG_CONFIG_HOME"] || join(homedir(), ".config");
+    this.configPath = join(xdgConfigHome, "rc", "config.yaml");
+
     this.config = this.loadConfig();
   }
 
   private loadConfig(): Config {
     const defaultConfig: Config = {
-      extensionsDir: join(homedir(), '.dotfiles', 'rc', 'extensions'),
-      defaultRunner: 'node',
+      extensionsDir: join(homedir(), ".rc", "extensions"),
+      defaultRunner: "node",
       enableLogging: true,
     };
 
@@ -29,9 +29,9 @@ export class ConfigManager {
     }
 
     try {
-      const configContent = readFileSync(this.configPath, 'utf8');
+      const configContent = readFileSync(this.configPath, "utf8");
       const userConfig = yaml.load(configContent) as Partial<Config>;
-      
+
       return { ...defaultConfig, ...userConfig };
     } catch (error) {
       console.warn(`Warning: Could not load config from ${this.configPath}:`, error);
@@ -45,9 +45,9 @@ export class ConfigManager {
       if (!existsSync(configDir)) {
         mkdirSync(configDir, { recursive: true });
       }
-      
+
       const configContent = yaml.dump(config);
-      writeFileSync(this.configPath, configContent, 'utf8');
+      writeFileSync(this.configPath, configContent, "utf8");
     } catch (error) {
       console.warn(`Warning: Could not save config to ${this.configPath}:`, error);
     }
@@ -67,14 +67,14 @@ export class ConfigManager {
   }
 
   getExtensionsDir(): string {
-    return this.config.extensionsDir || join(process.cwd(), 'examples', 'extensions');
+    return this.config.extensionsDir || join(process.cwd(), "examples", "extensions");
   }
 
   getDefaultRunner(): string {
-    return this.config.defaultRunner || 'node';
+    return this.config.defaultRunner || "node";
   }
 
   isLoggingEnabled(): boolean {
     return this.config.enableLogging ?? true;
   }
-} 
+}

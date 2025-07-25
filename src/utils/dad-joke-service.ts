@@ -19,7 +19,7 @@ export class DadJokeService {
     "What do you call a fish wearing a bowtie? So-fish-ticated!",
     "Why don't skeletons fight each other? They don't have the guts!",
     "Why did the golfer bring two pairs of pants? In case he got a hole in one!",
-    "What do you call a can opener that doesn't work? A can't opener!"
+    "What do you call a can opener that doesn't work? A can't opener!",
   ];
 
   async getRandomJoke(): Promise<string> {
@@ -30,4 +30,4 @@ export class DadJokeService {
     }
     return joke;
   }
-} 
+}

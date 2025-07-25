@@ -147,7 +147,7 @@ config.local.*
 examples/extensions/
 
 # Personal extensions (if accidentally committed)
-~/.dotfiles/rc/extensions/
+~/.rc/extensions/
 
 # CLI binary (if built locally)
 bin/rc
