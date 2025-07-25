@@ -4,6 +4,7 @@ import { spawn } from 'child_process';
 import yaml from 'js-yaml';
 import type { Extension, ExtensionConfig, ExecutionContext } from '../types/index.js';
 import { ConfigManager } from './config-manager.js';
+import { chalk } from '../utils/chalk.js';
 
 export class ExtensionLoader {
   private configManager: ConfigManager;
@@ -139,7 +140,7 @@ export class ExtensionLoader {
     return undefined;
   }
 
-  async executeExtension(extension: Extension, options: Record<string, any>): Promise<void> {
+  async executeExtension(extension: Extension, options: Record<string, any>, verbose = false): Promise<void> {
     const context: ExecutionContext = {
       command: extension.command,
       options,
@@ -147,10 +148,49 @@ export class ExtensionLoader {
       env: this.buildEnvironment(extension, options),
     };
 
-    const runner = extension.config?.runner || this.configManager.getDefaultRunner();
+    // Determine the appropriate runner based on script type if not specified in config
+    let runner = extension.config?.runner;
+    if (!runner) {
+      switch (extension.scriptType) {
+        case 'js':
+        case 'ts':
+          runner = 'node';
+          break;
+        case 'sh':
+          runner = 'bash';
+          break;
+        case 'py':
+          runner = 'python3';
+          break;
+        case 'rb':
+          runner = 'ruby';
+          break;
+        case 'php':
+          runner = 'php';
+          break;
+        default:
+          runner = this.configManager.getDefaultRunner();
+      }
+    }
+    
+    if (verbose) {
+      console.log(chalk.blue(`🔍 [DEBUG] Building execution context:`));
+      console.log(chalk.blue(`🔍 [DEBUG] - Command: ${context.command}`));
+      console.log(chalk.blue(`🔍 [DEBUG] - Script path: ${extension.scriptPath}`));
+      console.log(chalk.blue(`🔍 [DEBUG] - Runner: ${runner}`));
+      console.log(chalk.blue(`🔍 [DEBUG] - Environment variables: ${JSON.stringify(context.env, null, 2)}`));
+    }
     
     return new Promise((resolve, reject) => {
       const args = this.buildExecutionArgs(extension, runner, context);
+      
+      if (verbose) {
+        console.log(chalk.blue(`🔍 [DEBUG] Spawning process with:`));
+        console.log(chalk.blue(`🔍 [DEBUG] - Runner: ${runner}`));
+        console.log(chalk.blue(`🔍 [DEBUG] - Args: ${JSON.stringify(args)}`));
+        console.log(chalk.blue('🔍 [DEBUG] ---'));
+      }
+      
       const child = spawn(runner, args, {
         stdio: ['pipe', 'inherit', 'inherit'],
         env: { ...process.env, ...context.env },
@@ -163,6 +203,9 @@ export class ExtensionLoader {
       }
 
       child.on('close', (code: number | null) => {
+        if (verbose) {
+          console.log(chalk.blue(`🔍 [DEBUG] Process exited with code: ${code}`));
+        }
         if (code === 0) {
           resolve();
         } else {
@@ -171,6 +214,9 @@ export class ExtensionLoader {
       });
 
       child.on('error', (error: Error) => {
+        if (verbose) {
+          console.log(chalk.red(`🔍 [DEBUG] Process error: ${error.message}`));
+        }
         reject(error);
       });
     });
@@ -223,8 +269,22 @@ export class ExtensionLoader {
         args.push(extension.scriptPath);
     }
 
-    // Add remaining arguments
-    args.push(...context.args);
+    // Filter out command parts and only pass relevant arguments
+    const commandParts = extension.command.split(' ');
+    const filteredArgs = context.args.filter((arg, index) => {
+      // Skip command parts
+      if (index < commandParts.length) {
+        return false;
+      }
+      // Keep global flags like --verbose, --debug
+      if (arg === '--verbose' || arg === '--debug') {
+        return false; // Don't pass these to the script
+      }
+      return true;
+    });
+
+    // Add filtered arguments
+    args.push(...filteredArgs);
 
     return args;
   }

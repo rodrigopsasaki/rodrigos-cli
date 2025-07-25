@@ -6,6 +6,7 @@ import { ConfigManager } from '../core/config-manager.js';
 import { DadJokeService } from '../utils/dad-joke-service.js';
 import { CompletionService } from '../core/completion-service.js';
 import { chalk } from '../utils/chalk.js';
+import type { Extension } from '../types/index.js';
 
 const program = new Command();
 
@@ -13,7 +14,9 @@ const program = new Command();
 program
   .name('rc')
   .description('Rodrigo\'s CLI - A developer-first CLI framework that makes local commands feel native')
-  .version('1.0.0');
+  .version('1.0.0')
+  .option('-v, --verbose', 'Enable verbose/debug output')
+  .option('--debug', 'Enable debug mode (same as --verbose)');
 
 // Initialize core services
 const configManager = new ConfigManager();
@@ -43,32 +46,119 @@ async function loadExtensions() {
   try {
     const extensions = await extensionLoader.loadExtensions();
     
+    // Debug: Show loaded extensions
+    if (process.argv.includes('--verbose') || process.argv.includes('--debug')) {
+      console.log(chalk.blue('🔍 [DEBUG] Loaded extensions:'));
+      for (const ext of extensions) {
+        console.log(chalk.blue(`🔍 [DEBUG] - ${ext.command} -> ${ext.scriptPath}`));
+      }
+      console.log(chalk.blue('🔍 [DEBUG] ---'));
+    }
+    
+    // Group extensions by their main command
+    const commandGroups: Record<string, Extension[]> = {};
     for (const extension of extensions) {
-      const command = program.command(extension.command);
-      
-      if (extension.config?.description) {
-        command.description(extension.config.description);
+      const parts = extension.command.split(' ');
+      const mainCommand = parts[0];
+      if (mainCommand) {
+        if (!commandGroups[mainCommand]) {
+          commandGroups[mainCommand] = [];
+        }
+        commandGroups[mainCommand].push(extension);
       }
-      
-      // Add options from sidecar config
-      if (extension.config?.options) {
-        for (const option of extension.config.options) {
-          const optionStr = option.short 
-            ? `-${option.short}, --${option.name} <${option.name}>`
-            : `--${option.name} <${option.name}>`;
+    }
+    
+    // Register commands properly
+    for (const [mainCommand, groupExtensions] of Object.entries(commandGroups)) {
+      if (groupExtensions.length === 1) {
+        // Single command, register directly
+        const extension = groupExtensions[0];
+        if (!extension) continue;
+        
+        const command = program.command(extension.command);
+        
+        if (extension.config?.description) {
+          command.description(extension.config.description);
+        }
+        
+        // Add options from sidecar config
+        if (extension.config?.options) {
+          for (const option of extension.config.options) {
+            const optionStr = option.short 
+              ? `-${option.short}, --${option.name} <${option.name}>`
+              : `--${option.name} <${option.name}>`;
+            
+            command.option(optionStr, option.description);
+          }
+        }
+        
+        command.action(async (options) => {
+          try {
+            const isVerbose = process.argv.includes('--verbose') || process.argv.includes('--debug');
+            
+            if (isVerbose) {
+              console.log(chalk.blue(`🔍 [DEBUG] Executing extension: ${extension.command}`));
+              console.log(chalk.blue(`🔍 [DEBUG] Script path: ${extension.scriptPath}`));
+              console.log(chalk.blue(`🔍 [DEBUG] Script type: ${extension.scriptType}`));
+              console.log(chalk.blue(`🔍 [DEBUG] Runner: ${extension.config?.runner || 'default'}`));
+              console.log(chalk.blue(`🔍 [DEBUG] Options: ${JSON.stringify(options, null, 2)}`));
+              console.log(chalk.blue('🔍 [DEBUG] ---'));
+            }
+            
+            await extensionLoader.executeExtension(extension, options, isVerbose);
+          } catch (error) {
+            console.error(chalk.red(`Error executing ${extension.command}:`), error);
+            process.exit(1);
+          }
+        });
+      } else {
+        // Multiple commands with same prefix, create subcommands
+        const mainCmd = program.command(mainCommand);
+        
+        for (const extension of groupExtensions) {
+          if (!extension) continue;
           
-          command.option(optionStr, option.description);
+          const parts = extension.command.split(' ');
+          const subCommand = parts.slice(1).join(' ');
+          
+          const subCmd = mainCmd.command(subCommand);
+          
+          if (extension.config?.description) {
+            subCmd.description(extension.config.description);
+          }
+          
+          // Add options from sidecar config
+          if (extension.config?.options) {
+            for (const option of extension.config.options) {
+              const optionStr = option.short 
+                ? `-${option.short}, --${option.name} <${option.name}>`
+                : `--${option.name} <${option.name}>`;
+              
+              subCmd.option(optionStr, option.description);
+            }
+          }
+          
+          subCmd.action(async (options) => {
+            try {
+              const isVerbose = process.argv.includes('--verbose') || process.argv.includes('--debug');
+              
+              if (isVerbose) {
+                console.log(chalk.blue(`🔍 [DEBUG] Executing extension: ${extension.command}`));
+                console.log(chalk.blue(`🔍 [DEBUG] Script path: ${extension.scriptPath}`));
+                console.log(chalk.blue(`🔍 [DEBUG] Script type: ${extension.scriptType}`));
+                console.log(chalk.blue(`🔍 [DEBUG] Runner: ${extension.config?.runner || 'default'}`));
+                console.log(chalk.blue(`🔍 [DEBUG] Options: ${JSON.stringify(options, null, 2)}`));
+                console.log(chalk.blue('🔍 [DEBUG] ---'));
+              }
+              
+              await extensionLoader.executeExtension(extension, options, isVerbose);
+            } catch (error) {
+              console.error(chalk.red(`Error executing ${extension.command}:`), error);
+              process.exit(1);
+            }
+          });
         }
       }
-      
-      command.action(async (options) => {
-        try {
-          await extensionLoader.executeExtension(extension, options);
-        } catch (error) {
-          console.error(chalk.red(`Error executing ${extension.command}:`), error);
-          process.exit(1);
-        }
-      });
     }
   } catch (error) {
     console.error(chalk.red('Error loading extensions:'), error);
