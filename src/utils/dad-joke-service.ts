@@ -11,15 +11,6 @@ export class DadJokeService {
     "What do you call a fish wearing a bowtie? So-fish-ticated!",
     "Why did the golfer bring two pairs of pants? In case he got a hole in one!",
     "What do you call a can opener that doesn't work? A can't opener!",
-    "Why did the scarecrow win an award? Because he was outstanding in his field!",
-    "What do you call a bear with no teeth? A gummy bear!",
-    "Why don't eggs tell jokes? They'd crack each other up!",
-    "What do you call a fake noodle? An impasta!",
-    "Why did the cookie go to the doctor? Because it was feeling crumbly!",
-    "What do you call a fish wearing a bowtie? So-fish-ticated!",
-    "Why don't skeletons fight each other? They don't have the guts!",
-    "Why did the golfer bring two pairs of pants? In case he got a hole in one!",
-    "What do you call a can opener that doesn't work? A can't opener!",
   ];
 
   async getRandomJoke(): Promise<string> {
