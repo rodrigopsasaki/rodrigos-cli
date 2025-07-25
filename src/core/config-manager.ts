@@ -18,13 +18,13 @@ export class ConfigManager {
 
   private loadConfig(): Config {
     const defaultConfig: Config = {
-      extensionsDir: join(process.cwd(), 'examples', 'extensions'), // Use examples for testing
+      extensionsDir: join(homedir(), '.dotfiles', 'rc', 'extensions'),
       defaultRunner: 'node',
       enableLogging: true,
     };
 
     if (!existsSync(this.configPath)) {
-      this.saveConfig(defaultConfig);
+      // Don't create config file automatically - return default config only
       return defaultConfig;
     }
 

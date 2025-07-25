@@ -8,8 +8,9 @@ A developer-first CLI framework that makes local commands feel native — like t
 - **Directory-based extensions**: Recursively scan and register commands
 - **Runtime-agnostic**: Support for Node.js, TypeScript, Bash, Python, Ruby, PHP
 - **Sidecar configs**: Optional YAML/JSON metadata for enhanced functionality
-- **Cascading config**: Context and options flow through nested commands
+- **Directory-level configs**: Command groups can have their own descriptions and options
 - **First-class autocomplete**: Tab completion for all shells (zsh, bash, fish)
+- **Debug mode**: Built-in verbose logging for troubleshooting
 - **Dad jokes**: Because why not? 🎭
 
 ## 🚀 Quick Start
@@ -39,14 +40,38 @@ cd rodrigos-cli
 npm run setup
 ```
 
-### Setup
+### First Run
 
-1. Create your extensions directory:
+After installation, run `rc` to see your current configuration:
+
 ```bash
-mkdir -p ~/.dotfiles/rc/extensions
+rc
 ```
 
-2. Add shell completion (optional but recommended):
+This will show:
+- Configuration file location
+- Extensions directory
+- Available extensions
+- Quick start commands
+
+### Setup Extensions
+
+Create example extensions and configuration:
+
+```bash
+rc --setup
+```
+
+This will:
+- Create your extensions directory (`~/.dotfiles/rc/extensions`)
+- Copy example extensions
+- Copy directory-level configs
+- Update your configuration
+
+### Shell Completion
+
+Add shell completion for the best experience:
+
 ```bash
 # For zsh
 eval "$(rc completion zsh)"
@@ -58,39 +83,6 @@ eval "$(rc completion bash)"
 eval "$(rc completion fish)"
 ```
 
-### Your First Extension
-
-Create a simple UUID generator:
-
-```bash
-# Create the extension
-mkdir -p ~/.dotfiles/rc/extensions/gen
-```
-
-```javascript
-// ~/.dotfiles/rc/extensions/gen/uuid.js
-#!/usr/bin/env node
-import { randomUUID } from 'crypto';
-console.log(randomUUID());
-```
-
-```yaml
-# ~/.dotfiles/rc/extensions/gen/uuid.yaml
-description: Generate a random UUID
-runner: node
-options:
-  - name: format
-    type: string
-    description: Output format
-    suggestions: [default, uppercase, lowercase]
-```
-
-Now you can use it:
-```bash
-rc gen uuid
-# Output: 123e4567-e89b-12d3-a456-426614174000
-```
-
 ## 📁 Extension Structure
 
 Extensions are discovered recursively from your extensions directory:
@@ -98,10 +90,13 @@ Extensions are discovered recursively from your extensions directory:
 ```
 ~/.dotfiles/rc/extensions/
 ├── gen/
-│   ├── uuid.js
+│   ├── gen.yaml              # Directory-level config
+│   ├── uuid.cjs
 │   ├── uuid.yaml
 │   ├── objectid.sh
-│   └── objectid.yaml
+│   ├── objectid.yaml
+│   ├── rstring.sh
+│   └── rstring.yaml
 ├── git/
 │   ├── aliases.sh
 │   └── aliases.yaml
@@ -117,6 +112,7 @@ Extensions are discovered recursively from your extensions directory:
 This creates commands like:
 - `rc gen uuid`
 - `rc gen objectid`
+- `rc gen rstring`
 - `rc git aliases`
 - `rc aws s3 sync`
 - `rc aws ec2 list`
@@ -153,25 +149,27 @@ options:
     short: v
 ```
 
+### Directory-Level Configuration
+
+Command groups can have their own sidecar configs:
+
+```yaml
+# gen/gen.yaml
+description: Generate various types of data (UUIDs, ObjectIDs, random strings)
+options:
+  - name: help
+    type: string
+    description: Show help for specific generator
+```
+
+This gives the `gen` command its own description and options, separate from its child commands.
+
 ### Configuration Options
 
 - **description**: Help text for the command
 - **runner**: Override the default runtime
 - **passContext**: Pass execution context as JSON to stdin
 - **options**: Define command-line options with validation
-
-## 🔄 Cascading Configuration
-
-When running nested commands, context flows down:
-
-```bash
-rc aws --profile prod s3 sync
-```
-
-The `--profile prod` option is:
-- Available as `$RC_PROFILE` in shell scripts
-- Available as `process.env.RC_PROFILE` in Node.js
-- Passed as JSON context if `passContext: true`
 
 ## 🎯 Environment Variables
 
@@ -252,10 +250,13 @@ enableLogging: true
 
 ### Core Commands
 
-- `rc` - Show a dad joke (default behavior)
+- `rc` - Show configuration info and quick start commands
 - `rc help` - Show all available commands recursively
 - `rc completion <shell>` - Generate shell completion script
-- `rc --version` - Show version information
+- `rc --setup` - Create example extensions and configuration
+- `rc --config` - Show detailed configuration information
+- `rc --joke` - Show a dad joke
+- `rc --verbose` / `rc --debug` - Enable debug logging
 
 ### Extension Commands
 
@@ -305,6 +306,7 @@ npm run uninstall
 
 # Or manually
 rm ~/.local/bin/rc
+rm -rf ~/.local/bin/rodrigos-cli
 ```
 
 ## 🏗️ Architecture
