@@ -4,12 +4,13 @@
   "description": "Rodrigo's CLI - A developer-first CLI framework that makes local commands feel native",
   "main": "dist/index.js",
   "bin": {
-    "rc": "dist/bin/rc.js"
+    "rc": "dist/bin/rc.js",
+    "rc-immutable": "dist/bin/rc-immutable.js"
   },
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "bundle": "esbuild src/bin/rc.ts --bundle --platform=node --target=node18 --outfile=dist/bin/rc.js --format=esm",
+    "bundle": "esbuild src/bin/rc.ts --bundle --platform=node --target=node18 --outfile=dist/bin/rc.js --format=esm && esbuild src/bin/rc-immutable.ts --bundle --platform=node --target=node18 --outfile=dist/bin/rc-immutable.js --format=esm",
     "dev": "tsx src/bin/rc.ts",
     "test": "vitest",
     "test:watch": "vitest --watch",
@@ -18,8 +19,8 @@
     "format": "prettier --write src/**/*.ts",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build",
-    "postinstall": "npm run build && chmod +x dist/bin/rc.js",
-    "setup": "npm run build && chmod +x dist/bin/rc.js && ln -sf $(pwd)/dist/bin/rc.js ~/.local/bin/rc && echo '✅ rc CLI installed successfully! Run \"rc\" to test.'",
+    "postinstall": "npm run build && chmod +x dist/bin/rc.js && chmod +x dist/bin/rc-immutable.js",
+    "setup": "npm run build && chmod +x dist/bin/rc.js && chmod +x dist/bin/rc-immutable.js && ln -sf $(pwd)/dist/bin/rc.js ~/.local/bin/rc && echo '✅ rc CLI installed successfully! Run \"rc\" to test.'",
     "uninstall": "rm -f ~/.local/bin/rc && echo '✅ rc CLI uninstalled.'"
   },
   "keywords": [

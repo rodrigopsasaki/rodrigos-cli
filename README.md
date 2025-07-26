@@ -45,6 +45,45 @@ cd rodrigos-cli
 npm run setup
 ```
 
+### 🔗 Immutable Entrypoint System
+
+rc uses an innovative **immutable entrypoint system** that ensures your CLI installation is always up-to-date and self-healing:
+
+#### How it works:
+
+1. **Immutable Entrypoint**: The installer creates `~/.local/bin/rc-immutable` - a script that always points to the latest version
+2. **Smart Symlink**: The `rc` command is a symlink that points to `rc-immutable`
+3. **Self-Updating**: The immutable entrypoint can update itself and the underlying installation
+4. **Future-Proof**: Even if you have an "outdated" symlink, it will still work and can self-update
+
+#### Benefits:
+
+- **🔄 Self-Healing**: Outdated installations automatically get the latest features
+- **🛡️ Reliable**: The symlink never breaks, even across major updates
+- **⚡ Seamless**: Updates happen transparently without manual intervention
+- **🔧 Smart**: Detects development vs production environments
+
+#### Example scenario:
+
+```bash
+# User installs rc v1.0 (without --update feature)
+curl -fsSL https://raw.githubusercontent.com/rodrigopsasaki/rodrigos-cli/main/install.sh | bash
+
+# Later, rc v2.0 is released with --update feature
+# The user's symlink still works because it points to rc-immutable
+rc --update  # This works! The immutable entrypoint has the new feature
+```
+
+#### Updating:
+
+```bash
+# Update to the latest version
+rc --update
+
+# Or manually reinstall
+curl -fsSL https://raw.githubusercontent.com/rodrigopsasaki/rodrigos-cli/main/install.sh | bash
+```
+
 ### First Run
 
 After installation, run `rc` to see your current configuration:

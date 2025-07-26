@@ -81,8 +81,8 @@ program.action(async (options) => {
     console.log(themeChalk.textMuted("   rc --joke            # Show a dad joke"));
     console.log(themeChalk.textMuted("   rc --update          # Update to latest version"));
     console.log("");
-      } else {
-          // Handle specific options
+  } else {
+    // Handle specific options
     if (options.setup) {
       await handleSetup();
     } else if (options.config) {
@@ -94,7 +94,7 @@ program.action(async (options) => {
     } else if (options.update) {
       await handleUpdate();
     }
-    }
+  }
 });
 
 // Handler functions
@@ -632,4 +632,4 @@ async function main() {
 main().catch((error) => {
   console.error(themeChalk.statusError("Fatal error:"), error);
   process.exit(1);
-});
+}); 

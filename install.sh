@@ -32,31 +32,40 @@ fi
 
 echo "📦 Installing version $LATEST_VERSION..."
 
-# Clone and build locally
-TEMP_DIR=$(mktemp -d)
-echo "📁 Creating temporary directory: $TEMP_DIR"
+# Check if we're in a development environment (local git repo)
+if [ -d ".git" ] && [ -f "package.json" ]; then
+    echo "📁 Development environment detected, using local files..."
+    TEMP_DIR=$(pwd)
+    USE_LOCAL=true
+else
+    # Clone and build locally
+    TEMP_DIR=$(mktemp -d)
+    echo "📁 Creating temporary directory: $TEMP_DIR"
 
-git clone https://github.com/rodrigopsasaki/rodrigos-cli.git "$TEMP_DIR"
-cd "$TEMP_DIR"
+    git clone https://github.com/rodrigopsasaki/rodrigos-cli.git "$TEMP_DIR"
+    cd "$TEMP_DIR"
 
-# Checkout the specific version if it's not main
-if [ "$LATEST_VERSION" != "main" ]; then
-    git checkout "$LATEST_VERSION"
+    # Checkout the specific version if it's not main
+    if [ "$LATEST_VERSION" != "main" ]; then
+        git checkout "$LATEST_VERSION"
+    fi
+
+    echo "📦 Installing dependencies..."
+    npm install --no-audit --no-fund || {
+        echo "⚠️  npm install failed, trying with legacy peer deps..."
+        npm install --no-audit --no-fund --legacy-peer-deps || {
+            echo "⚠️  npm install still failed, trying with force..."
+            npm install --no-audit --no-fund --legacy-peer-deps --force
+        }
+    }
 fi
 
-echo "📦 Installing dependencies..."
-npm install --no-audit --no-fund || {
-    echo "⚠️  npm install failed, trying with legacy peer deps..."
-    npm install --no-audit --no-fund --legacy-peer-deps || {
-        echo "⚠️  npm install still failed, trying with force..."
-        npm install --no-audit --no-fund --legacy-peer-deps --force
-    }
-}
-
-echo "🔧 Creating wrapper script..."
-cat > ~/.local/bin/rc << 'EOF'
+echo "🔧 Creating immutable entrypoint..."
+cat > ~/.local/bin/rc-immutable << 'EOF'
 #!/bin/bash
-# Wrapper script for Rodrigo's CLI
+# Immutable entrypoint for Rodrigo's CLI
+# This script always points to the latest version and can self-update
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLI_DIR="$SCRIPT_DIR/rodrigos-cli"
 
@@ -68,10 +77,13 @@ fi
 
 # Run the CLI with tsx
 cd "$CLI_DIR"
-npx tsx src/bin/rc.ts "$@"
+npx tsx src/bin/rc-immutable.ts "$@"
 EOF
 
-chmod +x ~/.local/bin/rc
+chmod +x ~/.local/bin/rc-immutable
+
+echo "🔗 Creating symlink to immutable entrypoint..."
+ln -sf rc-immutable ~/.local/bin/rc
 
 echo "📁 Installing CLI files..."
 mkdir -p ~/.local/bin/rodrigos-cli
@@ -80,8 +92,16 @@ cp package.json ~/.local/bin/rodrigos-cli/
 cp tsconfig.json ~/.local/bin/rodrigos-cli/
 cp -r node_modules ~/.local/bin/rodrigos-cli/
 
+# Copy the immutable entrypoint if it exists in the current directory
+if [ -f "src/bin/rc-immutable.ts" ]; then
+    echo "📄 Copying immutable entrypoint..."
+    cp src/bin/rc-immutable.ts ~/.local/bin/rodrigos-cli/src/bin/
+fi
+
 echo "🧹 Cleaning up..."
-rm -rf "$TEMP_DIR"
+if [ "$USE_LOCAL" != "true" ]; then
+    rm -rf "$TEMP_DIR"
+fi
 
 # Test the installation
 if command -v rc &> /dev/null; then

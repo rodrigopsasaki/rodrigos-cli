@@ -28,7 +28,7 @@ describe("ConfigManager", () => {
   it("should create default config when no config file exists", () => {
     const configManager = new ConfigManager();
 
-    expect(configManager.getExtensionsDir()).toBe("/home/test/.rc/extensions");
+    expect(configManager.getExtensionsDir()).toBe("/home/test/.local/share/rc/extensions");
     expect(configManager.getDefaultRunner()).toBe("node");
     expect(configManager.isLoggingEnabled()).toBe(true);
   });
@@ -72,7 +72,7 @@ describe("ConfigManager", () => {
     const configManager = new ConfigManager();
 
     // Should fall back to defaults
-    expect(configManager.getExtensionsDir()).toBe("/home/test/.rc/extensions");
+    expect(configManager.getExtensionsDir()).toBe("/home/test/.local/share/rc/extensions");
     expect(configManager.getDefaultRunner()).toBe("node");
     expect(configManager.isLoggingEnabled()).toBe(true);
   });
