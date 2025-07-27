@@ -5,7 +5,6 @@ import yaml from "js-yaml";
 import type { Extension, ExtensionConfig, ExecutionContext } from "../types/index.js";
 import { ConfigManager } from "./config-manager.js";
 import { chalk } from "../utils/chalk.js";
-import { XDGPaths } from "../utils/xdg-paths.js";
 
 export class ExtensionLoader {
   private configManager: ConfigManager;
@@ -21,58 +20,13 @@ export class ExtensionLoader {
       return this.extensionsCache;
     }
 
-    const extensions: Extension[] = [];
-
-    // Load legacy extensions (without namespaces)
     const extensionsDir = this.configManager.getExtensionsDir();
-    const legacyExtensions = await this.discoverExtensions(extensionsDir);
-    extensions.push(...legacyExtensions);
-
-    // Load namespaced extensions
-    const namespacesDir = XDGPaths.getNamespacesDir();
-    const namespacedExtensions = await this.discoverNamespacedExtensions(namespacesDir);
-    extensions.push(...namespacedExtensions);
-
-    this.extensionsCache = extensions;
+    this.extensionsCache = await this.discoverExtensions(extensionsDir);
     this.cacheValid = true;
 
     return this.extensionsCache;
   }
 
-  private async discoverNamespacedExtensions(namespacesDir: string): Promise<Extension[]> {
-    const extensions: Extension[] = [];
-
-    if (!existsSync(namespacesDir)) {
-      return extensions;
-    }
-
-    try {
-      const namespaceItems = readdirSync(namespacesDir);
-
-      for (const namespaceName of namespaceItems) {
-        const namespacePath = join(namespacesDir, namespaceName);
-        const stat = statSync(namespacePath);
-
-        if (stat.isDirectory()) {
-          // Discover extensions within this namespace
-          const namespaceExtensions = await this.discoverExtensions(namespacePath, namespaceName);
-          
-          // Add namespace info to each extension
-          for (const extension of namespaceExtensions) {
-            extension.namespace = namespaceName;
-          }
-          
-          extensions.push(...namespaceExtensions);
-        }
-      }
-    } catch (error) {
-      if (this.configManager.isLoggingEnabled()) {
-        console.warn(`Warning: Could not read namespaces directory ${namespacesDir}:`, error);
-      }
-    }
-
-    return extensions;
-  }
 
   private async discoverExtensions(dir: string, baseCommand = ""): Promise<Extension[]> {
     const extensions: Extension[] = [];
@@ -220,7 +174,6 @@ export class ExtensionLoader {
       options,
       args: process.argv.slice(2),
       env: this.buildEnvironment(extension, options),
-      ...(extension.namespace && { namespace: extension.namespace }),
     };
 
     // Determine the appropriate runner based on script type if not specified in config
@@ -304,10 +257,6 @@ export class ExtensionLoader {
     env["RC_COMMAND"] = extension.command;
     env["RC_SCRIPT_PATH"] = extension.scriptPath;
     env["RC_SCRIPT_TYPE"] = extension.scriptType;
-    
-    if (extension.namespace) {
-      env["RC_NAMESPACE"] = extension.namespace;
-    }
 
     // Add options as environment variables
     for (const [key, value] of Object.entries(options)) {

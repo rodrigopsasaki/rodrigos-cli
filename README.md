@@ -156,10 +156,6 @@ rc follows the XDG Base Directory Specification for proper file organization:
 │       └── ec2/
 │           ├── list.js
 │           └── list.yaml
-└── namespaces/                  # Optional: organized namespaces
-    └── company/                 # Example namespace
-        ├── aws-login.sh
-        └── deploy.js
 
 ~/.cache/rc/                     # Cache files (future use)
 └── ...
@@ -175,7 +171,6 @@ This creates commands like:
 - `rc git aliases`
 - `rc aws s3 sync`
 - `rc aws ec2 list`
-- `rc company aws-login` (namespaced)
 
 
 ## ⚙️ Supported Runtimes
@@ -239,7 +234,6 @@ Extensions receive context through environment variables:
 - `RC_COMMAND`: Full command path (e.g., "aws s3 sync")
 - `RC_SCRIPT_PATH`: Path to the executing script
 - `RC_SCRIPT_TYPE`: Script type (js, ts, sh, py, rb, php)
-- `RC_NAMESPACE`: Namespace name (if using namespaces)
 - `RC_<OPTION_NAME>`: Any command-line options
 
 ## 🧪 Example Extensions
@@ -342,23 +336,27 @@ rc automatically detects your terminal theme and adjusts colors accordingly:
 
 All commands discovered from your extensions directory are automatically available with full help and autocomplete support.
 
-## 📂 Namespaces
+## 🔗 Command Aliasing
 
-For teams and complex setups, rc supports organizing extensions into namespaces with automatic aliasing:
+Create direct aliases for any rc command to make them feel native:
 
 ```bash
-# Manage namespaces
-rc namespace add company
-rc namespace list
-rc namespace remove company --force
+# Create aliases for specific commands
+rc alias gen uuid        # Creates 'uuid' command
+rc alias gen objectid    # Creates 'objectid' command  
+rc alias aws ec2 list    # Creates 'list' command (if you had this structure)
 
-# Add scripts to ~/.local/share/rc/namespaces/company/
-# Creates both: rc company aws-login AND company aws-login
+# Now use them directly
+uuid                     # Runs: rc gen uuid
+objectid                # Runs: rc gen objectid
 ```
 
-**Automatic Aliasing**: When you add a namespace, rc creates a symlink so `company aws-login` works directly without the `rc` prefix. Perfect for team commands that should feel native.
+**How it works**: `rc alias` creates a symlink that automatically resolves to the full command. Completely stateless - the filesystem is the source of truth.
 
-Namespaced scripts work identically to regular extensions with full support for sidecar configs, nested directories, and all runtime types. The `RC_NAMESPACE` environment variable is available to scripts.
+Perfect for:
+- **Personal shortcuts**: `uuid` instead of `rc gen uuid`
+- **Team commands**: Share a repo of scripts, everyone aliases the ones they use
+- **Frequently used tools**: Make your most-used commands feel native
 
 ## 🧪 Development
 

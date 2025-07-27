@@ -100,21 +100,6 @@ export class XDGPaths {
     return join(this.getAppDataDir(), "extensions");
   }
 
-  /**
-   * Get the namespaces directory path
-   * Returns: ~/.local/share/rc/namespaces/
-   */
-  static getNamespacesDir(): string {
-    return join(this.getAppDataDir(), "namespaces");
-  }
-
-  /**
-   * Get a specific namespace directory path
-   * Returns: ~/.local/share/rc/namespaces/{namespace}/
-   */
-  static getNamespaceDir(namespace: string): string {
-    return join(this.getNamespacesDir(), namespace);
-  }
 
   /**
    * Get the cache file path for extension metadata
@@ -143,7 +128,6 @@ export class XDGPaths {
       cache: this.getAppCacheDir(),
       state: this.getAppStateDir(),
       extensions: this.getExtensionsDir(),
-      namespaces: this.getNamespacesDir(),
       configFile: this.getConfigFile(),
       cacheFile: this.getExtensionsCacheFile(),
       stateFile: this.getStateFile(),
