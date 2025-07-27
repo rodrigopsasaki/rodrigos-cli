@@ -9,6 +9,9 @@ import { ConfigManager } from "../core/config-manager.js";
 import { DadJokeService } from "../utils/dad-joke-service.js";
 import { CompletionService } from "../core/completion-service.js";
 import { themeChalk } from "../utils/chalk.js";
+import { ui } from "../utils/ui.js";
+import { withProgress, executeWithProgress } from "../utils/progress.js";
+import { setupWizard } from "../utils/wizard.js";
 import type { Extension } from "../types/index.js";
 import { basename } from "path";
 
@@ -59,41 +62,7 @@ program.action(async (options) => {
   }
 
   if (process.argv.length === 2) {
-    console.log(themeChalk.header("\n🤖 Rodrigo's CLI\n"));
-
-    // Show current configuration
-    const config = configManager.getConfig();
-    const configPath = configManager.getConfigPath();
-
-    console.log(themeChalk.section("📁 Configuration:"));
-    console.log(themeChalk.textMuted(`   Config file: ${configPath}`));
-    console.log(themeChalk.textMuted(`   Extensions dir: ${config.extensionsDir}`));
-    console.log(themeChalk.textMuted(`   Default runner: ${config.defaultRunner}`));
-    console.log(themeChalk.textMuted(`   Logging enabled: ${config.enableLogging}`));
-
-    // Check if extensions directory exists and has extensions
-    const extensionsDir = configManager.getExtensionsDir();
-    const hasExtensions = await extensionLoader.loadExtensions().then((exts) => exts.length > 0);
-
-    console.log(themeChalk.section("\n📦 Extensions:"));
-    if (hasExtensions) {
-      const extensions = await extensionLoader.loadExtensions();
-      console.log(themeChalk.status(`   ✅ Found ${extensions.length} extension(s) in: ${extensionsDir}`));
-      console.log(themeChalk.textMuted('   Run "rc help" to see available commands'));
-    } else {
-      console.log(themeChalk.statusError(`   ❌ No extensions found in: ${extensionsDir}`));
-      console.log(themeChalk.textMuted('   Run "rc --setup" to create example extensions'));
-    }
-
-    console.log(themeChalk.section("\n🚀 Quick Start:"));
-    console.log(themeChalk.textMuted("   rc help              # Show available commands"));
-    console.log(themeChalk.textMuted("   rc --setup           # Create example extensions"));
-    console.log(themeChalk.textMuted("   rc alias <command>   # Create direct alias for any command"));
-    console.log(themeChalk.textMuted("   rc --config          # Show detailed config info"));
-    console.log(themeChalk.textMuted("   rc --migrate         # Show XDG directory structure"));
-    console.log(themeChalk.textMuted("   rc --joke            # Show a dad joke"));
-    console.log(themeChalk.textMuted("   rc --update          # Update to latest version"));
-    console.log("");
+    await showDashboard();
       } else {
           // Handle specific options
     if (options.setup) {
@@ -110,95 +79,240 @@ program.action(async (options) => {
     }
 });
 
+// Dashboard function
+async function showDashboard() {
+  // Create header
+  console.log(ui.createHeader(
+    "🤖 Rodrigo's CLI",
+    "A developer-first CLI framework that makes local commands feel native"
+  ));
+
+  // Load configuration and extensions with progress
+  const config = configManager.getConfig();
+  const configPath = configManager.getConfigPath();
+  const extensionsDir = configManager.getExtensionsDir();
+  
+  let extensions: any[] = [];
+  try {
+    extensions = await withProgress(
+      "Loading extensions...",
+      () => extensionLoader.loadExtensions(),
+      { successText: "Extensions loaded" }
+    );
+  } catch (error) {
+    console.log(ui.error("Failed to load extensions", error instanceof Error ? error.message : String(error)));
+  }
+
+  // Configuration panel
+  const configItems = [
+    { 
+      label: "Config file", 
+      value: configPath,
+      status: existsSync(configPath) ? 'success' as const : 'warning' as const
+    },
+    { 
+      label: "Extensions directory", 
+      value: extensionsDir,
+      status: existsSync(extensionsDir) ? 'success' as const : 'error' as const
+    },
+    { 
+      label: "Default runner", 
+      value: config.defaultRunner || "node"
+    },
+    { 
+      label: "Logging enabled", 
+      value: config.enableLogging ? "Yes" : "No",
+      status: config.enableLogging ? 'success' as const : undefined
+    },
+    { 
+      label: "Theme mode", 
+      value: config.darkMode === null ? "Auto-detect" : config.darkMode ? "Dark" : "Light"
+    }
+  ];
+
+  console.log(ui.createInfoPanel("📋 Configuration", configItems));
+  console.log("");
+
+  // Extensions status
+  if (extensions.length > 0) {
+    console.log(ui.success(`Found ${extensions.length} extension(s)`, "Run 'rc help' to see all available commands"));
+    
+    // Show top 5 extensions as a quick preview
+    const previewExtensions = extensions.slice(0, 5).map(ext => ({
+      command: ext.command,
+      description: ext.config?.description || "No description available",
+      type: ext.scriptType
+    }));
+    
+    if (previewExtensions.length > 0) {
+      console.log("\n" + ui.createBox(
+        ui.createCommandList(previewExtensions),
+        { title: "🚀 Available Commands (preview)" }
+      ));
+    }
+    
+    if (extensions.length > 5) {
+      console.log(ui.format.muted(`   ... and ${extensions.length - 5} more commands. Run 'rc help' to see all.`));
+    }
+  } else {
+    console.log(ui.error("No extensions found", "Run 'rc --setup' to create example extensions"));
+  }
+
+  // Quick actions
+  const quickActions = [
+    "rc help                 # Show all available commands",
+    "rc --setup              # Create example extensions and setup",
+    "rc alias <command>      # Create direct alias for any command",
+    "rc --config             # Show detailed configuration",
+    "rc --update             # Update to latest version"
+  ];
+
+  console.log("\n" + ui.createBox(
+    quickActions.map(action => `${ui.icons.lightning} ${ui.format.muted(action)}`).join("\n"),
+    { title: "⚡ Quick Actions", borderColor: "yellow", dimBorder: true }
+  ));
+  
+  console.log("");
+}
+
 // Handler functions
 async function handleSetup() {
-  console.log(themeChalk.header("\n🔧 Setting up Rodrigo's CLI...\n"));
-
   try {
-    // Import required modules
-    const { mkdirSync, readdirSync, statSync, copyFileSync } = await import("fs");
-    const { join } = await import("path");
-    const { XDGPaths } = await import("../utils/xdg-paths.js");
-
-    // Use XDG-compliant paths
-    const userExtensionsDir = XDGPaths.getExtensionsDir();
-
-    // Create XDG directory structure
-    console.log(themeChalk.section("📁 Creating XDG directory structure..."));
+    // Run interactive setup wizard
+    const options = await setupWizard.run();
     
-    const xdgDirs = XDGPaths.getAllAppDirs();
-    const dirsToCreate = [
-      { path: xdgDirs['config'], name: "Configuration" },
-      { path: xdgDirs['data'], name: "Data" },
-      { path: xdgDirs['cache'], name: "Cache" },
-      { path: xdgDirs['state'], name: "State" },
-      { path: userExtensionsDir, name: "Extensions" }
-    ];
-
-    for (const dir of dirsToCreate) {
-      if (dir.path && !existsSync(dir.path)) {
-        mkdirSync(dir.path, { recursive: true });
-        console.log(themeChalk.status(`   ✅ Created ${dir.name}: ${dir.path}`));
-      } else if (dir.path) {
-        console.log(themeChalk.textMuted(`   📁 ${dir.name} already exists: ${dir.path}`));
-      }
+    // Confirm before proceeding
+    const confirmed = await setupWizard.confirmSetup(options);
+    if (!confirmed) {
+      console.log(ui.warning("Setup cancelled"));
+      return;
     }
 
-    // Copy example extensions
-    const exampleExtensionsDir = join(process.cwd(), "examples", "extensions");
-    if (existsSync(exampleExtensionsDir)) {
-      console.log(themeChalk.section("\n📦 Copying example extensions..."));
-      await copyDirectory(exampleExtensionsDir, userExtensionsDir);
-      console.log(themeChalk.status("   ✅ Example extensions copied"));
+    // Execute setup steps based on user choices
+    const steps = [];
 
-      // Also copy any directory-level sidecar configs that might be in the examples
-      console.log(themeChalk.section("\n📋 Copying directory configs..."));
-      const exampleDirs = readdirSync(exampleExtensionsDir).filter((item: string) =>
-        statSync(join(exampleExtensionsDir, item)).isDirectory(),
-      );
+    if (options.setupXDG) {
+      steps.push({
+        name: "create-xdg",
+        description: "Creating XDG directory structure",
+        action: async () => {
+          const { XDGPaths } = await import("../utils/xdg-paths.js");
+          const xdgDirs = XDGPaths.getAllAppDirs();
+          const userExtensionsDir = XDGPaths.getExtensionsDir();
+          
+          const dirsToCreate = [
+            xdgDirs['config'],
+            xdgDirs['data'], 
+            xdgDirs['cache'],
+            xdgDirs['state'],
+            userExtensionsDir
+          ].filter(Boolean);
 
-      for (const dir of exampleDirs) {
-        const exampleDirPath = join(exampleExtensionsDir, dir);
-        const userDirPath = join(userExtensionsDir, dir);
-
-        // Look for directory-level configs (e.g., gen.yaml, gen.json)
-        const dirConfigs = readdirSync(exampleDirPath).filter(
-          (item: string) => item === `${dir}.yaml` || item === `${dir}.json`,
-        );
-
-        for (const config of dirConfigs) {
-          const srcConfig = join(exampleDirPath, config);
-          const destConfig = join(userDirPath, config);
-          copyFileSync(srcConfig, destConfig);
-          console.log(themeChalk.textMuted(`   📄 Copied: ${config}`));
+          for (const dirPath of dirsToCreate) {
+            if (!existsSync(dirPath!)) {
+              mkdirSync(dirPath!, { recursive: true });
+            }
+          }
         }
+      });
+    }
+
+    if (options.createExamples) {
+      steps.push({
+        name: "copy-examples",
+        description: "Installing example extensions",
+        action: async () => {
+          const { XDGPaths } = await import("../utils/xdg-paths.js");
+          const userExtensionsDir = XDGPaths.getExtensionsDir();
+          const exampleExtensionsDir = join(process.cwd(), "examples", "extensions");
+          
+          if (existsSync(exampleExtensionsDir)) {
+            await copyDirectory(exampleExtensionsDir, userExtensionsDir);
+            
+            // Copy directory-level configs
+            const { readdirSync, statSync, copyFileSync } = await import("fs");
+            const exampleDirs = readdirSync(exampleExtensionsDir).filter((item: string) =>
+              statSync(join(exampleExtensionsDir, item)).isDirectory()
+            );
+
+            for (const dir of exampleDirs) {
+              const exampleDirPath = join(exampleExtensionsDir, dir);
+              const userDirPath = join(userExtensionsDir, dir);
+              const dirConfigs = readdirSync(exampleDirPath).filter(
+                (item: string) => item === `${dir}.yaml` || item === `${dir}.json`
+              );
+
+              for (const config of dirConfigs) {
+                const srcConfig = join(exampleDirPath, config);
+                const destConfig = join(userDirPath, config);
+                copyFileSync(srcConfig, destConfig);
+              }
+            }
+          }
+        }
+      });
+    }
+
+    if (options.createConfig) {
+      steps.push({
+        name: "create-config",
+        description: "Creating configuration file",
+        action: async () => {
+          const { XDGPaths } = await import("../utils/xdg-paths.js");
+          const userExtensionsDir = XDGPaths.getExtensionsDir();
+          configManager.createComprehensiveConfig(userExtensionsDir);
+        }
+      });
+    }
+
+    // Execute all setup steps
+    await executeWithProgress(steps, { 
+      showSuccess: true,
+      showErrors: true 
+    });
+
+    // Show success message
+    console.log("\n" + ui.createBox(
+      [
+        `${ui.icons.success} Setup completed successfully!`,
+        "",
+        `Config file: ${configManager.getConfigPath()}`,
+        `Extensions: ${configManager.getExtensionsDir()}`,
+        "",
+        "You can edit the config file to customize rc's behavior.",
+        "The config includes detailed comments and examples."
+      ].join("\n"),
+      { title: "🎉 Setup Complete", borderColor: "green" }
+    ));
+
+    // Post-setup options
+    if (options.showTutorial) {
+      const nextSteps = await setupWizard.showPostSetupOptions();
+      
+      if (nextSteps.runTutorial) {
+        await setupWizard.runTutorial();
+      }
+      
+      if (nextSteps.createAlias) {
+        const extensions = await extensionLoader.loadExtensions();
+        await setupWizard.runAliasWizard(extensions);
+      }
+      
+      if (nextSteps.viewDashboard) {
+        console.log(ui.info("Opening dashboard...", "Run 'rc' anytime to see the main dashboard"));
+        console.log("");
+        await showDashboard();
       }
     }
 
-    // Create comprehensive configuration file
-    console.log(themeChalk.section("\n⚙️  Creating comprehensive configuration..."));
-    
-    configManager.createComprehensiveConfig(userExtensionsDir);
-    console.log(themeChalk.status("   ✅ Comprehensive configuration created"));
-    
-    // Show the user what was created
-    console.log(themeChalk.textMuted("   📄 Config file location:"));
-    console.log(themeChalk.path(`      ${configManager.getConfigPath()}`));
-    console.log(themeChalk.textMuted("   💡 You can edit this file to customize rc's behavior"));
-    console.log(themeChalk.textMuted("   📖 The config file includes detailed comments and examples"));
-
-    console.log(themeChalk.status("\n🎉 Setup complete!"));
-    console.log(themeChalk.textMuted('   Run "rc" to see your extensions'));
-    console.log(themeChalk.textMuted('   Run "rc help" to see available commands'));
-    console.log("");
   } catch (error) {
-    console.error(themeChalk.statusError("❌ Setup failed:"), error);
+    console.log(ui.error("Setup failed", error instanceof Error ? error.message : String(error)));
     process.exit(1);
   }
 }
 
 async function handleConfig() {
-  console.log(themeChalk.header("\n⚙️  Configuration Details\n"));
+  console.log(ui.createHeader("⚙️ Configuration Details", "Comprehensive system configuration and status"));
 
   const config = configManager.getConfig();
   const configPath = configManager.getConfigPath();
@@ -207,40 +321,83 @@ async function handleConfig() {
   const { XDGPaths } = await import("../utils/xdg-paths.js");
   const xdgDirs = XDGPaths.getAllAppDirs();
 
-  console.log(themeChalk.section("📁 Config File:"));
-  console.log(themeChalk.textMuted(`   Path: ${configPath}`));
-  console.log(themeChalk.textMuted(`   Exists: ${existsSync(configPath) ? "Yes" : "No"}`));
-
-  console.log(themeChalk.section("\n🗂️  XDG Directory Structure:"));
-  console.log(themeChalk.textMuted(`   Configuration: ${xdgDirs['config']}`));
-  console.log(themeChalk.textMuted(`   Data: ${xdgDirs['data']}`));
-  console.log(themeChalk.textMuted(`   Cache: ${xdgDirs['cache']}`));
-  console.log(themeChalk.textMuted(`   State: ${xdgDirs['state']}`));
-
-  console.log(themeChalk.section("\n🔧 Settings:"));
-  console.log(themeChalk.textMuted(`   Extensions Directory: ${config.extensionsDir}`));
-  console.log(themeChalk.textMuted(`   Default Runner: ${config.defaultRunner}`));
-  console.log(themeChalk.textMuted(`   Logging Enabled: ${config.enableLogging}`));
-  console.log(themeChalk.textMuted(`   Dark Mode: ${config.darkMode === undefined ? "Auto-detect" : config.darkMode ? "Forced Dark" : "Forced Light"}`));
-
-  // Show extensions info
-  const extensions = await extensionLoader.loadExtensions();
-  console.log(themeChalk.section("\n📦 Extensions:"));
-  console.log(themeChalk.textMuted(`   Found: ${extensions.length} extension(s)`));
-
-  if (extensions.length > 0) {
-    for (const ext of extensions) {
-      console.log(themeChalk.textMuted(`   - ${ext.command} (${ext.scriptType})`));
+  // Config file info
+  const configInfo = [
+    { 
+      label: "Config file path", 
+      value: configPath,
+      status: existsSync(configPath) ? 'success' as const : 'error' as const
+    },
+    { 
+      label: "File exists", 
+      value: existsSync(configPath) ? "Yes" : "No",
+      status: existsSync(configPath) ? 'success' as const : 'error' as const
     }
+  ];
+  
+  console.log(ui.createInfoPanel("📁 Configuration File", configInfo));
+  console.log("");
+
+  // XDG directories
+  const xdgInfo = [
+    { label: "Configuration", value: xdgDirs['config'] || "Not set" },
+    { label: "Data", value: xdgDirs['data'] || "Not set" },
+    { label: "Cache", value: xdgDirs['cache'] || "Not set" },
+    { label: "State", value: xdgDirs['state'] || "Not set" }
+  ];
+  
+  console.log(ui.createInfoPanel("🗂️ XDG Directory Structure", xdgInfo));
+  console.log("");
+
+  // Current settings
+  const settingsInfo = [
+    { label: "Extensions Directory", value: config.extensionsDir || "Not set" },
+    { label: "Default Runner", value: config.defaultRunner || "node" },
+    { label: "Logging Enabled", value: config.enableLogging ? "Yes" : "No" },
+    { 
+      label: "Dark Mode", 
+      value: config.darkMode === undefined ? "Auto-detect" : config.darkMode ? "Forced Dark" : "Forced Light" 
+    }
+  ];
+  
+  console.log(ui.createInfoPanel("🔧 Current Settings", settingsInfo));
+  console.log("");
+
+  // Extensions info with table
+  const extensions = await withProgress(
+    "Loading extensions...",
+    () => extensionLoader.loadExtensions()
+  );
+  
+  if (extensions.length > 0) {
+    const extensionData = extensions.map(ext => ({
+      command: ext.command,
+      description: ext.config?.description || "No description",
+      type: ext.scriptType
+    }));
+    
+    console.log(ui.createBox(
+      ui.createCommandList(extensionData),
+      { title: `📦 Extensions (${extensions.length} found)` }
+    ));
+  } else {
+    console.log(ui.error("No extensions found", "Run 'rc --setup' to create example extensions"));
   }
+  console.log("");
 
-  console.log(themeChalk.section("\n💡 Configuration Options:"));
-  console.log(themeChalk.textMuted("   • extensionsDir: Directory where your extensions are stored"));
-  console.log(themeChalk.textMuted("   • defaultRunner: Default script runner (node, python, ruby, php, bash, sh)"));
-  console.log(themeChalk.textMuted("   • enableLogging: Enable/disable debug logging"));
-  console.log(themeChalk.textMuted("   • darkMode: Theme mode (true=dark, false=light, null=auto-detect)"));
-  console.log(themeChalk.textMuted("   • Run 'rc --setup' to create a comprehensive config file with examples"));
-
+  // Configuration help
+  const helpItems = [
+    "extensionsDir: Directory where your extensions are stored",
+    "defaultRunner: Default script runner (node, python, ruby, php, bash, sh)",
+    "enableLogging: Enable/disable debug logging",
+    "darkMode: Theme mode (true=dark, false=light, null=auto-detect)",
+    "Run 'rc --setup' to create a comprehensive config file with examples"
+  ];
+  
+  console.log(ui.createBox(
+    helpItems.map(item => `${ui.icons.bullet} ${ui.format.muted(item)}`).join("\n"),
+    { title: "💡 Configuration Options", borderColor: "blue", dimBorder: true }
+  ));
   console.log("");
 }
 
@@ -652,11 +809,59 @@ program
   .command("help")
   .description("Show detailed help with all available commands")
   .action(async () => {
-    console.log(themeChalk.header("\n📚 Available Commands\n"));
+    console.log(ui.createHeader("📚 Available Commands", "Complete list of all discovered extensions and commands"));
 
-    const extensions = await extensionLoader.loadExtensions();
+    const extensions = await withProgress(
+      "Loading extensions...",
+      async () => {
+        const exts = await extensionLoader.loadExtensions();
+        return exts;
+      },
+      { successText: "Extensions loaded" }
+    );
+
+    if (extensions.length === 0) {
+      console.log(ui.error("No extensions found", "Run 'rc --setup' to create example extensions"));
+      return;
+    }
+
+    // Create command table
+    const commandData = extensions.map((ext: any) => ({
+      command: ext.command,
+      description: ext.config?.description || "No description available",
+      type: ext.scriptType
+    }));
+
+    console.log(ui.createBox(
+      ui.createCommandList(commandData),
+      { title: `🚀 All Commands (${extensions.length} total)` }
+    ));
+
+    // Show hierarchical view
     const commandTree = buildCommandTree(extensions);
-    printCommandTree(commandTree, 0);
+    const hierarchicalItems = buildHierarchicalItems(commandTree);
+    
+    if (hierarchicalItems.length > 0) {
+      console.log("\n" + ui.createBox(
+        ui.createHierarchicalList(hierarchicalItems),
+        { title: "📂 Hierarchical View", borderColor: "blue", dimBorder: true }
+      ));
+    }
+
+    // Quick tips
+    const tips = [
+      "Use 'rc <command>' to execute any command",
+      "Use 'rc alias <command>' to create direct aliases",
+      "Add --verbose to any command for debug information",
+      "Commands are auto-discovered from your extensions directory"
+    ];
+
+    console.log("\n" + ui.createBox(
+      tips.map(tip => `${ui.icons.bullet} ${ui.format.muted(tip)}`).join("\n"),
+      { title: "💡 Tips", borderColor: "yellow", dimBorder: true }
+    ));
+    
+    console.log("");
   });
 
 function buildCommandTree(extensions: any[]) {
@@ -688,20 +893,49 @@ function buildCommandTree(extensions: any[]) {
   return tree;
 }
 
-function printCommandTree(tree: Record<string, any>, depth: number) {
-  const indent = "  ".repeat(depth);
+// Removed printCommandTree function as it's no longer used
+
+function buildHierarchicalItems(tree: Record<string, any>): Array<{ 
+  label: string; 
+  children?: Array<{ label: string; description?: string }>;
+  description?: string;
+  icon?: string;
+}> {
+  const items: Array<{ 
+    label: string; 
+    children?: Array<{ label: string; description?: string }>;
+    description?: string;
+    icon?: string;
+  }> = [];
 
   for (const [command, info] of Object.entries(tree)) {
     const hasChildren = Object.keys(info.children).length > 0;
-    const icon = hasChildren ? "📁" : "⚡";
-    const desc = info.description ? themeChalk.textMuted(` - ${info.description}`) : "";
-
-    console.log(`${indent}${icon} ${themeChalk.primary(command)}${desc}`);
+    
+    const item: { 
+      label: string; 
+      children?: Array<{ label: string; description?: string }>;
+      description?: string;
+      icon?: string;
+    } = {
+      label: command,
+      description: info.description,
+      icon: hasChildren ? ui.icons.folder : ui.icons.file
+    };
 
     if (hasChildren) {
-      printCommandTree(info.children, depth + 1);
+      item.children = [];
+      for (const [childCommand, childInfo] of Object.entries(info.children)) {
+        item.children.push({
+          label: childCommand,
+          description: (childInfo as any)?.description
+        });
+      }
     }
+
+    items.push(item);
   }
+
+  return items;
 }
 
 // Handle execution when called via alias
