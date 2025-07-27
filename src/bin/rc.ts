@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
-import { existsSync, readFileSync, mkdirSync } from "fs";
+import { existsSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { execSync } from "child_process";
 import { ExtensionLoader } from "../core/extension-loader.js";
@@ -432,127 +432,168 @@ async function handleMigrate() {
 }
 
 async function handleUpdate() {
-  console.log(themeChalk.header("\n🔄 Updating Rodrigo's CLI...\n"));
+  console.log(ui.createHeader("🔄 Update Manager", "Pull the latest changes from the git repository"));
 
   try {
     // Get the current script's directory to find the installation
     const currentScriptPath = process.argv[1];
     if (!currentScriptPath) {
-      console.log(themeChalk.statusError("   ❌ Could not determine script path"));
+      console.log(ui.error("Could not determine script path", "Unable to locate current installation"));
       return;
     }
     
-    const currentScriptDir = dirname(currentScriptPath);
+    // Find the git repository root
+    let gitRepoDir: string = '';
     
-    // Look for the installation directory
-    let installationDir: string;
-    
-    // Check if we're in a development environment (running from source)
-    if (currentScriptPath.includes('node_modules') || currentScriptPath.includes('src/bin')) {
-      console.log(themeChalk.status("   📁 Running from development environment"));
-      console.log(themeChalk.textMuted("   💡 Updates are handled by git pull in development"));
-      return;
+    // Start from the current script directory and walk up to find .git
+    let searchDir = dirname(currentScriptPath);
+    while (searchDir !== '/' && searchDir !== '') {
+      if (existsSync(join(searchDir, '.git'))) {
+        gitRepoDir = searchDir;
+        break;
+      }
+      searchDir = dirname(searchDir);
     }
     
-    // Check if we're in the user's local bin directory
-    if (currentScriptPath.includes('.local/bin')) {
-      installationDir = join(currentScriptDir, 'rodrigos-cli');
-    } else {
-      // Try to find the installation in common locations
+    // If not found from script path, try common installation locations
+    if (!gitRepoDir) {
       const possiblePaths = [
         join(process.env['HOME'] || '', '.local/bin/rodrigos-cli'),
         '/usr/local/bin/rodrigos-cli',
-        '/opt/rodrigos-cli'
+        '/opt/rodrigos-cli',
+        process.cwd() // Current working directory
       ];
       
-      installationDir = possiblePaths.find(path => existsSync(path)) || '';
+      for (const path of possiblePaths) {
+        if (existsSync(join(path, '.git'))) {
+          gitRepoDir = path;
+          break;
+        }
+      }
     }
     
-    if (!installationDir || !existsSync(installationDir)) {
-      console.log(themeChalk.statusError("   ❌ Could not find installation directory"));
-      console.log(themeChalk.textMuted("   💡 Please reinstall using the installer script"));
+    if (!gitRepoDir || !existsSync(join(gitRepoDir, '.git'))) {
+      console.log(ui.error(
+        "Git repository not found",
+        "Could not locate the git repository for this installation."
+      ));
+      console.log("\n" + ui.createBox(
+        [
+          "This command requires a git-based installation.",
+          "",
+          "To reinstall with git support:",
+          "",
+          `${ui.icons.bullet} git clone https://github.com/rodrigopsasaki/rodrigos-cli.git`,
+          `${ui.icons.bullet} cd rodrigos-cli && npm run setup`,
+          "",
+          "Or use the installer:",
+          "",
+          `${ui.icons.bullet} curl -fsSL https://raw.githubusercontent.com/rodrigopsasaki/rodrigos-cli/main/install.sh | bash`
+        ].join("\n"),
+        { title: "🔧 Installation Required", borderColor: "yellow" }
+      ));
       return;
     }
     
-    console.log(themeChalk.section("📁 Installation found:"));
-    console.log(themeChalk.textMuted(`   ${installationDir}`));
+    console.log(ui.createInfoPanel("📁 Repository Found", [
+      { label: "Git repository", value: gitRepoDir }
+    ]));
     
-    // Get the latest version
-    console.log(themeChalk.section("\n📥 Checking for updates..."));
-    const latestVersion = execSync('curl -s https://api.github.com/repos/rodrigopsasaki/rodrigos-cli/releases/latest | grep \'"tag_name":\' | sed -E \'s/.*"([^"]+)".*/\\1/\'', { encoding: 'utf8' }).trim();
+    // Check git status first
+    await withProgress(
+      "Checking repository status...",
+      async () => {
+        try {
+          execSync(`cd "${gitRepoDir}" && git status --porcelain`, { encoding: 'utf8' });
+        } catch (error) {
+          throw new Error("Could not check git status");
+        }
+      }
+    );
     
-    if (!latestVersion) {
-      console.log(themeChalk.statusError("   ❌ Could not determine latest version"));
-      return;
-    }
+    // Get current commit info
+    const currentCommit = execSync(`cd "${gitRepoDir}" && git rev-parse --short HEAD`, { encoding: 'utf8' }).trim();
+    const currentBranch = execSync(`cd "${gitRepoDir}" && git branch --show-current`, { encoding: 'utf8' }).trim();
     
-    console.log(themeChalk.status(`   📦 Latest version: ${latestVersion}`));
+    console.log(ui.createInfoPanel("📊 Current Status", [
+      { label: "Branch", value: currentBranch },
+      { label: "Commit", value: currentCommit }
+    ]));
     
-    // Check current version
-    const packageJsonPath = join(installationDir, 'package.json');
-    let currentVersion = 'unknown';
+    // Pull latest changes
+    await executeWithProgress([
+      {
+        name: "fetch",
+        description: "Fetching latest changes",
+        action: async () => {
+          execSync(`cd "${gitRepoDir}" && git fetch origin`, { stdio: 'pipe' });
+        }
+      },
+      {
+        name: "pull", 
+        description: "Pulling latest changes",
+        action: async () => {
+          execSync(`cd "${gitRepoDir}" && git pull origin ${currentBranch}`, { stdio: 'pipe' });
+        }
+      },
+      {
+        name: "install",
+        description: "Installing dependencies",
+        action: async () => {
+          if (existsSync(join(gitRepoDir, 'package.json'))) {
+            execSync(`cd "${gitRepoDir}" && npm install`, { stdio: 'pipe' });
+          }
+        }
+      },
+      {
+        name: "build",
+        description: "Building project",
+        action: async () => {
+          if (existsSync(join(gitRepoDir, 'package.json'))) {
+            execSync(`cd "${gitRepoDir}" && npm run build`, { stdio: 'pipe' });
+          }
+        }
+      }
+    ], { showSuccess: true, showErrors: true });
     
-    if (existsSync(packageJsonPath)) {
+    // Get new commit info
+    const newCommit = execSync(`cd "${gitRepoDir}" && git rev-parse --short HEAD`, { encoding: 'utf8' }).trim();
+    
+    if (currentCommit === newCommit) {
+      console.log(ui.success("Already up to date!", "No new changes were found"));
+    } else {
+      console.log(ui.success("Update completed!", `Updated from ${currentCommit} to ${newCommit}`));
+      
+      // Show what changed
       try {
-        const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
-        currentVersion = packageJson.version || 'unknown';
+        const changeLog = execSync(`cd "${gitRepoDir}" && git log --oneline ${currentCommit}..${newCommit}`, { encoding: 'utf8' }).trim();
+        if (changeLog) {
+          console.log("\n" + ui.createBox(
+            changeLog,
+            { title: "📝 Recent Changes", borderColor: "green" }
+          ));
+        }
       } catch (error) {
-        // Ignore parsing errors
+        // Ignore if we can't get the changelog
       }
-    }
-    
-    console.log(themeChalk.textMuted(`   📦 Current version: ${currentVersion}`));
-    
-    if (currentVersion === latestVersion) {
-      console.log(themeChalk.status("   ✅ Already up to date!"));
-      return;
-    }
-    
-    // Perform the update
-    console.log(themeChalk.section("\n🔄 Updating..."));
-    
-    // Create a temporary directory for the update
-    const tempDir = join(process.env['TEMP'] || process.env['TMP'] || '/tmp', `rc-update-${Date.now()}`);
-    mkdirSync(tempDir, { recursive: true });
-    
-    try {
-      // Clone the latest version
-      console.log(themeChalk.textMuted("   📥 Cloning latest version..."));
-      execSync(`git clone https://github.com/rodrigopsasaki/rodrigos-cli.git "${tempDir}"`, { stdio: 'pipe' });
-      
-      // Checkout the specific version
-      if (latestVersion !== 'main') {
-        execSync(`cd "${tempDir}" && git checkout "${latestVersion}"`, { stdio: 'pipe' });
-      }
-      
-      // Install dependencies
-      console.log(themeChalk.textMuted("   📦 Installing dependencies..."));
-      execSync(`cd "${tempDir}" && npm install --no-audit --no-fund`, { stdio: 'pipe' });
-      
-      // Backup current installation
-      const backupDir = `${installationDir}.backup.${Date.now()}`;
-      console.log(themeChalk.textMuted("   💾 Creating backup..."));
-      execSync(`cp -r "${installationDir}" "${backupDir}"`, { stdio: 'pipe' });
-      
-      // Update the installation
-      console.log(themeChalk.textMuted("   🔄 Updating files..."));
-      execSync(`rm -rf "${installationDir}/src" "${installationDir}/package.json" "${installationDir}/tsconfig.json" "${installationDir}/node_modules"`, { stdio: 'pipe' });
-      execSync(`cp -r "${tempDir}/src" "${installationDir}/"`, { stdio: 'pipe' });
-      execSync(`cp "${tempDir}/package.json" "${installationDir}/"`, { stdio: 'pipe' });
-      execSync(`cp "${tempDir}/tsconfig.json" "${installationDir}/"`, { stdio: 'pipe' });
-      execSync(`cp -r "${tempDir}/node_modules" "${installationDir}/"`, { stdio: 'pipe' });
-      
-      console.log(themeChalk.status("   ✅ Update completed successfully!"));
-      console.log(themeChalk.textMuted(`   💾 Backup saved to: ${backupDir}`));
-      
-    } finally {
-      // Clean up temporary directory
-      execSync(`rm -rf "${tempDir}"`, { stdio: 'pipe' });
     }
     
   } catch (error) {
-    console.error(themeChalk.statusError("   ❌ Update failed:"), error);
-    console.log(themeChalk.textMuted("   💡 Please try running the installer again"));
+    console.log(ui.error("Update failed", error instanceof Error ? error.message : String(error)));
+    console.log("\n" + ui.createBox(
+      [
+        "You can try updating manually:",
+        "",
+        `${ui.icons.bullet} cd /path/to/rodrigos-cli`,
+        `${ui.icons.bullet} git pull origin main`,
+        `${ui.icons.bullet} npm install && npm run build`,
+        "",
+        "Or reinstall completely:",
+        "",
+        `${ui.icons.bullet} curl -fsSL https://raw.githubusercontent.com/rodrigopsasaki/rodrigos-cli/main/install.sh | bash`
+      ].join("\n"),
+      { title: "🛠️ Manual Update", borderColor: "red" }
+    ));
   }
 }
 
