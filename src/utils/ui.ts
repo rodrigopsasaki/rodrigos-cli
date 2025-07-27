@@ -206,7 +206,15 @@ class PremiumUI {
       output += `   ${themeChalk.textMuted(description)}\n`;
       
       if (cmd.aliases && cmd.aliases.length > 0) {
-        const aliasesStr = cmd.aliases.map(alias => themeChalk.accent(`rc ${cmd.command.split(' ').slice(0, -1).concat(alias).join(' ')}`)).join(', ');
+        const aliasesStr = cmd.aliases.map(alias => {
+          // If alias already includes the full command path, just prepend 'rc'
+          if (alias.includes(' ')) {
+            return themeChalk.accent(`rc ${alias}`);
+          } else {
+            // Otherwise, construct the full path like the original logic
+            return themeChalk.accent(`rc ${cmd.command.split(' ').slice(0, -1).concat(alias).join(' ')}`);
+          }
+        }).join(', ');
         output += `   ${themeChalk.textMuted('Aliases:')} ${aliasesStr}\n`;
       }
       

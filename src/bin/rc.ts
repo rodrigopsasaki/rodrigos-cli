@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
-import { existsSync, mkdirSync } from "fs";
+import { existsSync, mkdirSync, statSync } from "fs";
 import { join, dirname } from "path";
 import { execSync } from "child_process";
 import { ExtensionLoader } from "../core/extension-loader.js";
@@ -403,8 +403,11 @@ async function handleConfig() {
     () => extensionLoader.loadExtensions()
   );
   
-  if (extensions.length > 0) {
-    const extensionData = extensions.map(ext => ({
+  // Filter out virtual directory-level extensions and wrapper scripts
+  const actualExtensions = extensions.filter(ext => !isVirtualExtension(ext) && !isWrapperScript(ext));
+  
+  if (actualExtensions.length > 0) {
+    const extensionData = actualExtensions.map(ext => ({
       command: ext.command,
       description: ext.config?.description || "No description",
       type: ext.scriptType
@@ -412,7 +415,7 @@ async function handleConfig() {
     
     console.log(ui.createBox(
       ui.createCommandList(extensionData),
-      { title: `📦 Extensions (${extensions.length} found)` }
+      { title: `📦 Extensions (${actualExtensions.length} found)` }
     ));
   } else {
     console.log(ui.error("No extensions found", "Run 'rc --setup' to create example extensions"));
@@ -844,6 +847,28 @@ async function handleDoctor() {
   console.log("");
 }
 
+// Helper function to check if an extension is a virtual directory-level command
+function isVirtualExtension(extension: Extension): boolean {
+  try {
+    // Virtual extensions have directory paths as scriptPath
+    return statSync(extension.scriptPath).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+// Helper function to check if an extension is a wrapper script (duplicates directory name)
+function isWrapperScript(extension: Extension): boolean {
+  const parts = extension.command.split(' ');
+  if (parts.length < 2) return false;
+  
+  // Check if the last part equals the second-to-last part (e.g., "npm npm")
+  const lastPart = parts[parts.length - 1];
+  const secondToLastPart = parts[parts.length - 2];
+  
+  return lastPart === secondToLastPart;
+}
+
 // Helper function to copy directory recursively
 async function copyDirectory(src: string, dest: string) {
   const { readdirSync, statSync, copyFileSync, mkdirSync } = await import("fs");
@@ -1121,36 +1146,78 @@ program
       return;
     }
 
-    // Filter and group extensions to avoid showing aliases as separate commands
+    // Filter out virtual directory-level extensions and wrapper scripts for display
+    const actualExtensions = extensions.filter(ext => !isVirtualExtension(ext) && !isWrapperScript(ext));
+    
+    // Group extensions by script path to show main commands with their aliases
     const commandMap = new Map<string, any>();
     
-    for (const ext of extensions) {
-      const isAlias = extensions.some(originalExt => 
-        originalExt !== ext && 
-        originalExt.scriptPath === ext.scriptPath &&
-        originalExt.config?.aliases?.includes(ext.command.split(' ').pop() || '')
-      );
+    for (const ext of actualExtensions) {
+      // Skip if we already have the main command for this script
+      if (commandMap.has(ext.scriptPath)) continue;
       
-      if (!isAlias) {
-        commandMap.set(ext.scriptPath, {
-          command: ext.command,
-          description: ext.config?.description || "No description available",
-          type: ext.scriptType,
-          aliases: ext.config?.aliases || []
-        });
+      // Find all extensions for this script path (main command + aliases)
+      const relatedExtensions = actualExtensions.filter(e => e.scriptPath === ext.scriptPath);
+      
+      // Find the main command (the one without an alias-like suffix or the first one)
+      let mainExtension = relatedExtensions[0];
+      
+      // If there are multiple commands for the same script, try to identify the main one
+      if (relatedExtensions.length > 1) {
+        // Look for the extension that has aliases defined in its config
+        const extensionWithAliases = relatedExtensions.find(e => e.config?.aliases && e.config.aliases.length > 0);
+        if (extensionWithAliases) {
+          mainExtension = extensionWithAliases;
+        } else {
+          // If no extension has aliases, prefer shorter commands (directory-level commands)
+          // over longer ones (wrapper scripts like "npm npm")
+          const sortedByLength = relatedExtensions.sort((a, b) => a.command.length - b.command.length);
+          mainExtension = sortedByLength[0];
+        }
       }
+      
+      if (!mainExtension) continue;
+      
+      // Collect all aliases for this command
+      const allAliases: string[] = [];
+      
+      // Add aliases from config
+      if (mainExtension.config?.aliases) {
+        const commandParts = mainExtension.command.split(' ');
+        const baseCommand = commandParts.slice(0, -1);
+        
+        for (const alias of mainExtension.config.aliases) {
+          const aliasCommand = baseCommand.length > 0 ? [...baseCommand, alias].join(' ') : alias;
+          allAliases.push(aliasCommand);
+        }
+      }
+      
+      // Add any additional extensions that share the same script path but have different commands
+      // (but skip ones already covered by the aliases config)
+      const aliasCommands = new Set(allAliases);
+      for (const relatedExt of relatedExtensions) {
+        if (relatedExt.command !== mainExtension.command && !aliasCommands.has(relatedExt.command)) {
+          allAliases.push(relatedExt.command);
+        }
+      }
+      
+      commandMap.set(ext.scriptPath, {
+        command: mainExtension.command,
+        description: mainExtension.config?.description || "No description available",
+        type: mainExtension.scriptType,
+        aliases: allAliases
+      });
     }
     
     const commandData = Array.from(commandMap.values());
 
     console.log(ui.createBox(
       ui.createCommandList(commandData),
-      { title: `🚀 All Commands (${commandData.length} unique, ${extensions.length} total including aliases)` }
+      { title: `🚀 All Commands (${commandData.length} unique, ${actualExtensions.length} total including aliases)` }
     ));
 
-    // Show hierarchical view
-    const commandTree = buildCommandTree(extensions);
-    const hierarchicalItems = buildHierarchicalItems(commandTree);
+    // Show hierarchical view using the same command grouping
+    const hierarchicalItems = buildHierarchicalItemsFromCommandMap(commandData);
     
     if (hierarchicalItems.length > 0) {
       console.log("\n" + ui.createBox(
@@ -1175,43 +1242,44 @@ program
     console.log("");
   });
 
-function buildCommandTree(extensions: any[]) {
-  const tree: Record<string, any> = {};
+// Removed buildCommandTree and printCommandTree functions as they're no longer used
 
-  for (const ext of extensions) {
-    const parts = ext.command.split(" ");
-    let current = tree;
-
-    for (let i = 0; i < parts.length; i++) {
-      const part = parts[i];
-      if (!current[part]) {
-        // Only set description if this is the final part (the extension itself)
-        // or if this is a virtual extension (same command as the part)
-        const shouldSetDescription = i === parts.length - 1 || ext.command === part;
-        current[part] = {
-          description: shouldSetDescription ? ext.config?.description : undefined,
-          children: {},
-          isVirtual: ext.command === part, // Mark virtual extensions
-        };
-      }
-      if (i === parts.length - 1) {
-        current[part].extension = ext;
-      }
-      current = current[part].children;
-    }
-  }
-
-  return tree;
-}
-
-// Removed printCommandTree function as it's no longer used
-
-function buildHierarchicalItems(tree: Record<string, any>): Array<{ 
+function buildHierarchicalItemsFromCommandMap(commandData: Array<{ command: string; description: string; type: string; aliases: string[] }>): Array<{ 
   label: string; 
   children?: Array<{ label: string; description?: string }>;
   description?: string;
   icon?: string;
 }> {
+  const tree: Record<string, any> = {};
+  
+  // Build tree structure from command data (already filtered and grouped)
+  for (const cmd of commandData) {
+    const parts = cmd.command.split(" ");
+    let current = tree;
+    
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (!part) continue;
+      
+      if (!current[part]) {
+        current[part] = {
+          children: {},
+          commands: []
+        };
+      }
+      
+      // If this is the final part, add the command info
+      if (i === parts.length - 1) {
+        current[part].description = cmd.description;
+        current[part].aliases = cmd.aliases;
+        current[part].isLeaf = true;
+      }
+      
+      current = current[part].children;
+    }
+  }
+  
+  // Convert tree to hierarchical items
   const items: Array<{ 
     label: string; 
     children?: Array<{ label: string; description?: string }>;
@@ -1229,16 +1297,26 @@ function buildHierarchicalItems(tree: Record<string, any>): Array<{
       icon?: string;
     } = {
       label: command,
-      description: info.description,
       icon: hasChildren ? ui.icons.folder : ui.icons.file
     };
 
     if (hasChildren) {
       item.children = [];
       for (const [childCommand, childInfo] of Object.entries(info.children)) {
+        let childDescription = (childInfo as any)?.description;
+        
+        // Add aliases to description if they exist
+        if ((childInfo as any)?.aliases && (childInfo as any).aliases.length > 0) {
+          const aliasNames = (childInfo as any).aliases.map((alias: string) => {
+            const aliasParts = alias.split(' ');
+            return aliasParts[aliasParts.length - 1]; // Get just the alias name
+          });
+          childDescription = childDescription + ` (aliases: ${aliasNames.join(', ')})`;
+        }
+        
         item.children.push({
           label: childCommand,
-          description: (childInfo as any)?.description
+          description: childDescription
         });
       }
     }
@@ -1248,6 +1326,8 @@ function buildHierarchicalItems(tree: Record<string, any>): Array<{
 
   return items;
 }
+
+// Removed buildHierarchicalItems function as it's no longer used
 
 // Handle execution when called via alias
 async function handleAliasedExecution(aliasCommand: string): Promise<void> {
