@@ -21,6 +21,7 @@ export interface Extension {
   scriptPath: string;
   config?: ExtensionConfig | undefined;
   scriptType: "js" | "ts" | "sh" | "py" | "rb" | "php";
+  namespace?: string;
 }
 
 export interface ExecutionContext {
@@ -28,6 +29,7 @@ export interface ExecutionContext {
   options: Record<string, any>;
   args: string[];
   env: Record<string, string>;
+  namespace?: string;
 }
 
 export interface Config {

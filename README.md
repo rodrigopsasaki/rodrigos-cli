@@ -137,25 +137,29 @@ rc follows the XDG Base Directory Specification for proper file organization:
 └── ...
 
 ~/.local/share/rc/               # Data files
-└── extensions/                  # Your custom extensions
-    ├── gen/
-    │   ├── gen.yaml            # Directory-level config
-    │   ├── uuid.cjs
-    │   ├── uuid.yaml
-    │   ├── objectid.sh
-    │   ├── objectid.yaml
-    │   ├── rstring.sh
-    │   └── rstring.yaml
-    ├── git/
-    │   ├── aliases.sh
-    │   └── aliases.yaml
-    └── aws/
-        ├── s3/
-        │   ├── sync.sh
-        │   └── sync.yaml
-        └── ec2/
-            ├── list.js
-            └── list.yaml
+├── extensions/                  # Your custom extensions
+│   ├── gen/
+│   │   ├── gen.yaml            # Directory-level config
+│   │   ├── uuid.cjs
+│   │   ├── uuid.yaml
+│   │   ├── objectid.sh
+│   │   ├── objectid.yaml
+│   │   ├── rstring.sh
+│   │   └── rstring.yaml
+│   ├── git/
+│   │   ├── aliases.sh
+│   │   └── aliases.yaml
+│   └── aws/
+│       ├── s3/
+│       │   ├── sync.sh
+│       │   └── sync.yaml
+│       └── ec2/
+│           ├── list.js
+│           └── list.yaml
+└── namespaces/                  # Optional: organized namespaces
+    └── company/                 # Example namespace
+        ├── aws-login.sh
+        └── deploy.js
 
 ~/.cache/rc/                     # Cache files (future use)
 └── ...
@@ -171,6 +175,8 @@ This creates commands like:
 - `rc git aliases`
 - `rc aws s3 sync`
 - `rc aws ec2 list`
+- `rc company aws-login` (namespaced)
+
 
 ## ⚙️ Supported Runtimes
 
@@ -233,6 +239,7 @@ Extensions receive context through environment variables:
 - `RC_COMMAND`: Full command path (e.g., "aws s3 sync")
 - `RC_SCRIPT_PATH`: Path to the executing script
 - `RC_SCRIPT_TYPE`: Script type (js, ts, sh, py, rb, php)
+- `RC_NAMESPACE`: Namespace name (if using namespaces)
 - `RC_<OPTION_NAME>`: Any command-line options
 
 ## 🧪 Example Extensions
@@ -334,6 +341,24 @@ rc automatically detects your terminal theme and adjusts colors accordingly:
 ### Extension Commands
 
 All commands discovered from your extensions directory are automatically available with full help and autocomplete support.
+
+## 📂 Namespaces
+
+For teams and complex setups, rc supports organizing extensions into namespaces with automatic aliasing:
+
+```bash
+# Manage namespaces
+rc namespace add company
+rc namespace list
+rc namespace remove company --force
+
+# Add scripts to ~/.local/share/rc/namespaces/company/
+# Creates both: rc company aws-login AND company aws-login
+```
+
+**Automatic Aliasing**: When you add a namespace, rc creates a symlink so `company aws-login` works directly without the `rc` prefix. Perfect for team commands that should feel native.
+
+Namespaced scripts work identically to regular extensions with full support for sidecar configs, nested directories, and all runtime types. The `RC_NAMESPACE` environment variable is available to scripts.
 
 ## 🧪 Development
 

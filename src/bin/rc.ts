@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
-import { existsSync, readFileSync, mkdirSync } from "fs";
+import { existsSync, readFileSync, mkdirSync, readdirSync, statSync } from "fs";
 import { join, dirname } from "path";
 import { execSync } from "child_process";
 import { ExtensionLoader } from "../core/extension-loader.js";
@@ -9,7 +9,21 @@ import { ConfigManager } from "../core/config-manager.js";
 import { DadJokeService } from "../utils/dad-joke-service.js";
 import { CompletionService } from "../core/completion-service.js";
 import { themeChalk } from "../utils/chalk.js";
+import { XDGPaths } from "../utils/xdg-paths.js";
 import type { Extension } from "../types/index.js";
+import { basename } from "path";
+
+// Detect if we're being called via a namespace alias
+const binaryName = basename(process.argv[1] || '');
+const isAliased = binaryName !== 'rc' && binaryName !== 'rc.js' && binaryName !== 'rc-immutable' && binaryName !== 'rc-immutable.js';
+const aliasNamespace = isAliased ? binaryName : null;
+
+// If called via alias, inject namespace into arguments
+if (aliasNamespace) {
+  // Transform: ['node', '/path/to/company', 'aws', 'login'] 
+  // Into: ['node', '/path/to/rc', 'company', 'aws', 'login']
+  process.argv.splice(2, 0, aliasNamespace);
+}
 
 const program = new Command();
 
@@ -57,6 +71,7 @@ program.action(async (options) => {
     console.log(themeChalk.section("📁 Configuration:"));
     console.log(themeChalk.textMuted(`   Config file: ${configPath}`));
     console.log(themeChalk.textMuted(`   Extensions dir: ${config.extensionsDir}`));
+    console.log(themeChalk.textMuted(`   Namespaces dir: ${XDGPaths.getNamespacesDir()}`));
     console.log(themeChalk.textMuted(`   Default runner: ${config.defaultRunner}`));
     console.log(themeChalk.textMuted(`   Logging enabled: ${config.enableLogging}`));
 
@@ -66,7 +81,19 @@ program.action(async (options) => {
 
     console.log(themeChalk.section("\n📦 Extensions:"));
     if (hasExtensions) {
-      console.log(themeChalk.status(`   ✅ Found extensions in: ${extensionsDir}`));
+      const extensions = await extensionLoader.loadExtensions();
+      const legacyExtensions = extensions.filter(ext => !ext.namespace);
+      const namespacedExtensions = extensions.filter(ext => ext.namespace);
+      const namespaces = [...new Set(namespacedExtensions.map(ext => ext.namespace))];
+      
+      if (legacyExtensions.length > 0) {
+        console.log(themeChalk.status(`   ✅ Found ${legacyExtensions.length} extension(s) in: ${extensionsDir}`));
+      }
+      
+      if (namespaces.length > 0) {
+        console.log(themeChalk.status(`   ✅ Found ${namespaces.length} namespace(s): ${namespaces.join(', ')}`));
+      }
+      
       console.log(themeChalk.textMuted('   Run "rc help" to see available commands'));
     } else {
       console.log(themeChalk.statusError(`   ❌ No extensions found in: ${extensionsDir}`));
@@ -76,6 +103,8 @@ program.action(async (options) => {
     console.log(themeChalk.section("\n🚀 Quick Start:"));
     console.log(themeChalk.textMuted("   rc help              # Show available commands"));
     console.log(themeChalk.textMuted("   rc --setup           # Create example extensions"));
+    console.log(themeChalk.textMuted("   rc namespace list    # List all namespaces"));
+    console.log(themeChalk.textMuted("   rc namespace add     # Add a new namespace"));
     console.log(themeChalk.textMuted("   rc --config          # Show detailed config info"));
     console.log(themeChalk.textMuted("   rc --migrate         # Show XDG directory structure"));
     console.log(themeChalk.textMuted("   rc --joke            # Show a dad joke"));
@@ -109,6 +138,7 @@ async function handleSetup() {
 
     // Use XDG-compliant paths
     const userExtensionsDir = XDGPaths.getExtensionsDir();
+    const namespacesDir = XDGPaths.getNamespacesDir();
 
     // Create XDG directory structure
     console.log(themeChalk.section("📁 Creating XDG directory structure..."));
@@ -119,7 +149,8 @@ async function handleSetup() {
       { path: xdgDirs['data'], name: "Data" },
       { path: xdgDirs['cache'], name: "Cache" },
       { path: xdgDirs['state'], name: "State" },
-      { path: userExtensionsDir, name: "Extensions" }
+      { path: userExtensionsDir, name: "Extensions" },
+      { path: namespacesDir, name: "Namespaces" }
     ];
 
     for (const dir of dirsToCreate) {
@@ -206,18 +237,59 @@ async function handleConfig() {
 
   console.log(themeChalk.section("\n🔧 Settings:"));
   console.log(themeChalk.textMuted(`   Extensions Directory: ${config.extensionsDir}`));
+  console.log(themeChalk.textMuted(`   Namespaces Directory: ${XDGPaths.getNamespacesDir()}`));
   console.log(themeChalk.textMuted(`   Default Runner: ${config.defaultRunner}`));
   console.log(themeChalk.textMuted(`   Logging Enabled: ${config.enableLogging}`));
   console.log(themeChalk.textMuted(`   Dark Mode: ${config.darkMode === undefined ? "Auto-detect" : config.darkMode ? "Forced Dark" : "Forced Light"}`));
 
   // Show extensions info
   const extensions = await extensionLoader.loadExtensions();
-  console.log(themeChalk.section("\n📦 Extensions:"));
-  console.log(themeChalk.textMuted(`   Found: ${extensions.length} extension(s)`));
+  const legacyExtensions = extensions.filter(ext => !ext.namespace);
+  const namespacedExtensions = extensions.filter(ext => ext.namespace);
+  const namespaces = [...new Set(namespacedExtensions.map(ext => ext.namespace))];
 
-  if (extensions.length > 0) {
-    for (const ext of extensions) {
+  console.log(themeChalk.section("\n📦 Extensions:"));
+  console.log(themeChalk.textMuted(`   Found: ${extensions.length} extension(s) total`));
+  console.log(themeChalk.textMuted(`   Legacy: ${legacyExtensions.length} extension(s)`));
+  console.log(themeChalk.textMuted(`   Namespaced: ${namespacedExtensions.length} extension(s) across ${namespaces.length} namespace(s)`));
+
+  if (legacyExtensions.length > 0) {
+    console.log(themeChalk.textMuted("\n   Legacy Extensions:"));
+    for (const ext of legacyExtensions) {
       console.log(themeChalk.textMuted(`   - ${ext.command} (${ext.scriptType})`));
+    }
+  }
+
+  // Show namespaces info
+  console.log(themeChalk.section("\n📂 Namespaces:"));
+  
+  const namespacesDir = XDGPaths.getNamespacesDir();
+  if (!existsSync(namespacesDir)) {
+    console.log(themeChalk.textMuted("   No namespaces directory found"));
+    console.log(themeChalk.textMuted(`   Directory would be: ${namespacesDir}`));
+  } else {
+    try {
+      const { readdirSync, statSync } = await import("fs");
+      const namespacesDirs = readdirSync(namespacesDir).filter(item => {
+        const itemPath = join(namespacesDir, item);
+        return statSync(itemPath).isDirectory();
+      });
+
+      if (namespacesDirs.length === 0) {
+        console.log(themeChalk.textMuted("   No namespaces found"));
+        console.log(themeChalk.textMuted(`   Directory: ${namespacesDir}`));
+      } else {
+        console.log(themeChalk.textMuted(`   Found: ${namespacesDirs.length} namespace(s)`));
+        console.log(themeChalk.textMuted(`   Root directory: ${namespacesDir}`));
+        
+        for (const namespace of namespacesDirs) {
+          const namespacePath = XDGPaths.getNamespaceDir(namespace);
+          const namespaceExtensions = extensions.filter(ext => ext.namespace === namespace);
+          console.log(themeChalk.textMuted(`   - ${namespace} (${namespaceExtensions.length} commands) -> ${namespacePath}`));
+        }
+      }
+    } catch (error) {
+      console.log(themeChalk.textMuted("   Error reading namespaces directory"));
     }
   }
 
@@ -555,6 +627,187 @@ async function loadExtensions() {
     process.exit(1);
   }
 }
+
+// Namespace management commands
+const namespaceCmd = program.command("namespace");
+namespaceCmd.description("Manage command namespaces");
+
+namespaceCmd
+  .command("add")
+  .description("Add a new namespace")
+  .argument("<name>", "Namespace name")
+  .option("-u, --url <url>", "Git repository URL to clone")
+  .option("--no-alias", "Don't create a symlink alias for direct access")
+  .action(async (name, options) => {
+    const namespacePath = XDGPaths.getNamespaceDir(name);
+    
+    if (existsSync(namespacePath)) {
+      console.log(themeChalk.statusError(`❌ Namespace "${name}" already exists`));
+      return;
+    }
+
+    try {
+      mkdirSync(namespacePath, { recursive: true });
+      
+      if (options.url) {
+        console.log(themeChalk.status(`📦 Cloning ${options.url} into namespace "${name}"...`));
+        execSync(`git clone "${options.url}" "${namespacePath}"`, { stdio: 'inherit' });
+      } else {
+        console.log(themeChalk.status(`📁 Created local namespace "${name}"`));
+        console.log(themeChalk.textMuted(`   Directory: ${namespacePath}`));
+        console.log(themeChalk.textMuted(`   Add scripts to this directory to make them available as "rc ${name} <command>"`));
+      }
+      
+      // Create symlink alias unless disabled
+      if (options.alias !== false) {
+        try {
+          // Find the current rc binary location
+          const rcBinaryPath = process.argv[1];
+          if (!rcBinaryPath) {
+            throw new Error("Could not determine rc binary path");
+          }
+          const aliasPath = join(dirname(rcBinaryPath), name);
+          
+          // Create symlink if it doesn't exist
+          if (!existsSync(aliasPath)) {
+            execSync(`ln -sf "${rcBinaryPath}" "${aliasPath}"`);
+            console.log(themeChalk.status(`🔗 Created alias: ${name} -> ${aliasPath}`));
+            console.log(themeChalk.textMuted(`   Now you can use "${name} <command>" directly`));
+          } else {
+            console.log(themeChalk.textMuted(`🔗 Alias already exists: ${aliasPath}`));
+          }
+        } catch (error) {
+          console.log(themeChalk.statusError(`⚠️  Failed to create alias: ${error}`));
+          console.log(themeChalk.textMuted(`   You can still use "rc ${name} <command>"`));
+        }
+      }
+      
+      // Invalidate extension cache to pick up new namespace
+      extensionLoader.invalidateCache();
+      
+      console.log(themeChalk.status(`✅ Namespace "${name}" added successfully`));
+    } catch (error) {
+      console.error(themeChalk.statusError(`❌ Failed to add namespace "${name}":`), error);
+      process.exit(1);
+    }
+  });
+
+namespaceCmd
+  .command("list")
+  .description("List all namespaces")
+  .action(async () => {
+    const namespacesDir = XDGPaths.getNamespacesDir();
+    
+    if (!existsSync(namespacesDir)) {
+      console.log(themeChalk.textMuted("No namespaces found"));
+      console.log(themeChalk.textMuted('Use "rc namespace add <name>" to create your first namespace'));
+      return;
+    }
+
+    try {
+      const namespaces = readdirSync(namespacesDir).filter(item => {
+        const itemPath = join(namespacesDir, item);
+        return statSync(itemPath).isDirectory();
+      });
+
+      if (namespaces.length === 0) {
+        console.log(themeChalk.textMuted("No namespaces found"));
+        console.log(themeChalk.textMuted('Use "rc namespace add <name>" to create your first namespace'));
+        return;
+      }
+
+      console.log(themeChalk.header("📦 Namespaces:\n"));
+      
+      const extensions = await extensionLoader.loadExtensions();
+      
+      for (const namespace of namespaces) {
+        const namespacePath = XDGPaths.getNamespaceDir(namespace);
+        const namespaceExtensions = extensions.filter(ext => ext.namespace === namespace);
+        
+        console.log(themeChalk.primary(`📁 ${namespace}`));
+        console.log(themeChalk.textMuted(`   Path: ${namespacePath}`));
+        
+        // Check if alias exists
+        try {
+          const rcBinaryPath = process.argv[1];
+          if (rcBinaryPath) {
+            const aliasPath = join(dirname(rcBinaryPath), namespace);
+            if (existsSync(aliasPath)) {
+              console.log(themeChalk.textMuted(`   Alias: ${namespace} -> ${aliasPath}`));
+            }
+          }
+        } catch (error) {
+          // Ignore alias check errors
+        }
+        
+        if (namespaceExtensions.length > 0) {
+          console.log(themeChalk.textMuted(`   Commands: ${namespaceExtensions.length}`));
+          for (const ext of namespaceExtensions.slice(0, 3)) {
+            console.log(themeChalk.textMuted(`     • rc ${ext.command} or ${namespace} ${ext.command.replace(namespace + ' ', '')}`));
+          }
+          if (namespaceExtensions.length > 3) {
+            console.log(themeChalk.textMuted(`     ... and ${namespaceExtensions.length - 3} more`));
+          }
+        } else {
+          console.log(themeChalk.textMuted("   Commands: 0"));
+        }
+        console.log("");
+      }
+    } catch (error) {
+      console.error(themeChalk.statusError("❌ Failed to list namespaces:"), error);
+      process.exit(1);
+    }
+  });
+
+namespaceCmd
+  .command("remove")
+  .description("Remove a namespace")
+  .argument("<name>", "Namespace name")
+  .option("-f, --force", "Force removal without confirmation")
+  .action(async (name, options) => {
+    const namespacePath = XDGPaths.getNamespaceDir(name);
+    
+    if (!existsSync(namespacePath)) {
+      console.log(themeChalk.statusError(`❌ Namespace "${name}" not found`));
+      return;
+    }
+
+    if (!options.force) {
+      console.log(themeChalk.status(`⚠️  This will permanently delete namespace "${name}" and all its contents`));
+      console.log(themeChalk.textMuted(`   Path: ${namespacePath}`));
+      console.log(themeChalk.textMuted('   Use --force to proceed without this confirmation'));
+      return;
+    }
+
+    try {
+      // Remove the namespace directory
+      execSync(`rm -rf "${namespacePath}"`, { stdio: 'inherit' });
+      
+      // Remove symlink alias if it exists
+      try {
+        const rcBinaryPath = process.argv[1];
+        if (!rcBinaryPath) {
+          throw new Error("Could not determine rc binary path");
+        }
+        const aliasPath = join(dirname(rcBinaryPath), name);
+        
+        if (existsSync(aliasPath)) {
+          execSync(`rm -f "${aliasPath}"`);
+          console.log(themeChalk.status(`🔗 Removed alias: ${aliasPath}`));
+        }
+      } catch (error) {
+        console.log(themeChalk.statusError(`⚠️  Failed to remove alias: ${error}`));
+      }
+      
+      // Invalidate extension cache
+      extensionLoader.invalidateCache();
+      
+      console.log(themeChalk.status(`✅ Namespace "${name}" removed successfully`));
+    } catch (error) {
+      console.error(themeChalk.statusError(`❌ Failed to remove namespace "${name}":`), error);
+      process.exit(1);
+    }
+  });
 
 // Completion command
 program

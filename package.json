@@ -12,7 +12,7 @@
     "build": "tsc",
     "bundle": "esbuild src/bin/rc.ts --bundle --platform=node --target=node18 --outfile=dist/bin/rc.js --format=esm && esbuild src/bin/rc-immutable.ts --bundle --platform=node --target=node18 --outfile=dist/bin/rc-immutable.js --format=esm",
     "dev": "tsx src/bin/rc.ts",
-    "test": "vitest",
+    "test": "vitest run",
     "test:watch": "vitest --watch",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
