@@ -8,6 +8,7 @@ import { ExtensionLoader } from "../core/extension-loader.js";
 import { ConfigManager } from "../core/config-manager.js";
 import { DadJokeService } from "../utils/dad-joke-service.js";
 import { CompletionService } from "../core/completion-service.js";
+import { getVersion } from "../utils/version.js";
 import { themeChalk } from "../utils/chalk.js";
 import type { Extension } from "../types/index.js";
 
@@ -17,7 +18,7 @@ const program = new Command();
 program
   .name("rc")
   .description("Rodrigo's CLI - A developer-first CLI framework that makes local commands feel native")
-  .version("1.0.0")
+  .version(getVersion())
   .option("-v, --verbose", "Enable verbose/debug output")
   .option("--debug", "Enable debug mode (same as --verbose)")
   .option("--setup", "Create example extensions and configuration")
