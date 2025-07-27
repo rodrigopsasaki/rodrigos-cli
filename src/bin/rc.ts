@@ -90,15 +90,17 @@ async function showDashboard() {
   // Load configuration and extensions with progress
   const config = configManager.getConfig();
   const configPath = configManager.getConfigPath();
-  const extensionsDir = configManager.getExtensionsDir();
+  const extensionsDirs = configManager.getExtensionsDirs();
   
   let extensions: any[] = [];
+  let conflicts: any[] = [];
   try {
     extensions = await withProgress(
       "Loading extensions...",
       () => extensionLoader.loadExtensions(),
       { successText: "Extensions loaded" }
     );
+    conflicts = extensionLoader.getConflicts();
   } catch (error) {
     console.log(ui.error("Failed to load extensions", error instanceof Error ? error.message : String(error)));
   }
@@ -111,9 +113,14 @@ async function showDashboard() {
       status: existsSync(configPath) ? 'success' as const : 'warning' as const
     },
     { 
-      label: "Extensions directory", 
-      value: extensionsDir,
-      status: existsSync(extensionsDir) ? 'success' as const : 'error' as const
+      label: "Extensions directories", 
+      value: `${extensionsDirs.length} configured`,
+      status: extensionsDirs.length > 0 ? 'success' as const : 'error' as const
+    },
+    {
+      label: "Primary directory",
+      value: extensionsDirs[0] || "None",
+      status: extensionsDirs[0] && existsSync(extensionsDirs[0]) ? 'success' as const : 'error' as const
     },
     { 
       label: "Default runner", 
@@ -132,6 +139,15 @@ async function showDashboard() {
 
   console.log(ui.createInfoPanel("📋 Configuration", configItems));
   console.log("");
+
+  // Show conflicts warning if any exist
+  if (conflicts.length > 0) {
+    console.log(ui.createBox(
+      ui.error("⚠️ Command Conflicts Detected", `${conflicts.length} command(s) have naming conflicts. Run 'rc doctor' for details.`),
+      { title: "🚨 Warning", borderColor: "yellow" }
+    ));
+    console.log("");
+  }
 
   // Extensions status
   if (extensions.length > 0) {
@@ -161,6 +177,7 @@ async function showDashboard() {
   // Quick actions
   const quickActions = [
     "rc help                 # Show all available commands",
+    "rc doctor               # Diagnose conflicts and configuration",
     "rc --setup              # Create example extensions and setup",
     "rc alias <command>      # Create direct alias for any command",
     "rc --config             # Show detailed configuration",
@@ -350,8 +367,13 @@ async function handleConfig() {
   console.log("");
 
   // Current settings
+  const extensionsDirs = configManager.getExtensionsDirs();
   const settingsInfo = [
-    { label: "Extensions Directory", value: config.extensionsDir || "Not set" },
+    { 
+      label: "Extensions Directories", 
+      value: `${extensionsDirs.length} configured`,
+      status: extensionsDirs.length > 0 ? 'success' as const : 'error' as const
+    },
     { label: "Default Runner", value: config.defaultRunner || "node" },
     { label: "Logging Enabled", value: config.enableLogging ? "Yes" : "No" },
     { 
@@ -359,6 +381,18 @@ async function handleConfig() {
       value: config.darkMode === undefined ? "Auto-detect" : config.darkMode ? "Forced Dark" : "Forced Light" 
     }
   ];
+
+  // Add individual directories to settings
+  for (let i = 0; i < extensionsDirs.length; i++) {
+    const dir = extensionsDirs[i];
+    if (dir) {
+      settingsInfo.push({
+        label: `Directory ${i + 1} (Priority ${i + 1})`,
+        value: dir,
+        status: existsSync(dir) ? 'success' as const : 'error' as const
+      });
+    }
+  }
   
   console.log(ui.createInfoPanel("🔧 Current Settings", settingsInfo));
   console.log("");
@@ -387,11 +421,13 @@ async function handleConfig() {
 
   // Configuration help
   const helpItems = [
-    "extensionsDir: Directory where your extensions are stored",
+    "extensionsDirs: Array of directories where extensions are stored (first = highest priority)",
+    "extensionsDir: Legacy single directory setting (deprecated, use extensionsDirs)",
     "defaultRunner: Default script runner (node, python, ruby, php, bash, sh)",
     "enableLogging: Enable/disable debug logging",
     "darkMode: Theme mode (true=dark, false=light, null=auto-detect)",
-    "Run 'rc --setup' to create a comprehensive config file with examples"
+    "Run 'rc --setup' to create a comprehensive config file with examples",
+    "Use 'rc doctor' to diagnose conflicts between extension directories"
   ];
   
   console.log(ui.createBox(
@@ -595,6 +631,217 @@ async function handleUpdate() {
       { title: "🛠️ Manual Update", borderColor: "red" }
     ));
   }
+}
+
+async function handleDoctor() {
+  console.log(ui.createHeader("🩺 System Diagnostics", "Analyze configuration and identify potential conflicts"));
+
+  // Load extensions to get conflicts
+  let conflicts: any[] = [];
+  let extensionSources: any[] = [];
+  
+  try {
+    await withProgress(
+      "Loading extensions...",
+      () => extensionLoader.loadExtensions(),
+      { successText: "Extensions loaded" }
+    );
+    
+    conflicts = extensionLoader.getConflicts();
+    extensionSources = extensionLoader.getExtensionSources();
+  } catch (error) {
+    console.log(ui.error("Failed to load extensions", error instanceof Error ? error.message : String(error)));
+    return;
+  }
+
+  // Configuration diagnostics
+  const config = configManager.getConfig();
+  const configPath = configManager.getConfigPath();
+  const extensionsDirs = configManager.getExtensionsDirs();
+
+  const configDiagnostics = [
+    {
+      label: "Config file exists",
+      value: existsSync(configPath) ? "✅ Yes" : "❌ No",
+      status: existsSync(configPath) ? 'success' as const : 'error' as const
+    },
+    {
+      label: "Configuration format",
+      value: config.extensionsDirs ? "✅ New format (extensionsDirs)" : config.extensionsDir ? "⚠️ Legacy format (extensionsDir)" : "❌ No extensions config",
+      status: config.extensionsDirs ? 'success' as const : config.extensionsDir ? 'warning' as const : 'error' as const
+    },
+    {
+      label: "Extensions directories",
+      value: `${extensionsDirs.length} configured`,
+      status: extensionsDirs.length > 0 ? 'success' as const : 'error' as const
+    }
+  ];
+
+  console.log(ui.createInfoPanel("⚙️ Configuration Status", configDiagnostics));
+  console.log("");
+
+  // Directory analysis
+  const directoryItems = [];
+  for (let i = 0; i < extensionsDirs.length; i++) {
+    const dir = extensionsDirs[i];
+    if (!dir) continue;
+    
+    const exists = existsSync(dir);
+    const extensionsInDir = extensionSources.filter(source => source.sourceDir === dir);
+    
+    directoryItems.push({
+      label: `Directory ${i + 1} (Priority ${i + 1})`,
+      value: dir,
+      status: exists ? 'success' as const : 'error' as const
+    });
+    
+    directoryItems.push({
+      label: `├─ Status`,
+      value: exists ? `✅ Exists (${extensionsInDir.length} extensions)` : "❌ Does not exist"
+    });
+    
+    if (i < extensionsDirs.length - 1) {
+      directoryItems.push({
+        label: "└─",
+        value: ""
+      });
+    }
+  }
+
+  console.log(ui.createInfoPanel("📁 Extension Directories", directoryItems));
+  console.log("");
+
+  // Conflict analysis
+  if (conflicts.length > 0) {
+    console.log(ui.createBox(
+      ui.error("⚠️ Command Conflicts Detected", `Found ${conflicts.length} command(s) with naming conflicts`),
+      { title: "🚨 Conflicts", borderColor: "red" }
+    ));
+    console.log("");
+
+    for (const conflict of conflicts) {
+      const conflictItems: Array<{ label: string; value: string; status?: 'success' | 'error' | 'warning' | undefined }> = [
+        {
+          label: "Command",
+          value: conflict.command,
+          status: undefined
+        },
+        {
+          label: "Active script",
+          value: conflict.primaryExtension.scriptPath,
+          status: 'success' as const
+        }
+      ];
+
+      for (let i = 0; i < conflict.conflictingExtensions.length; i++) {
+        const conflictingExt = conflict.conflictingExtensions[i];
+        conflictItems.push({
+          label: `Shadowed ${i + 1}`,
+          value: conflictingExt.scriptPath,
+          status: 'warning' as const
+        });
+      }
+
+      console.log(ui.createInfoPanel(`⚡ Conflict: rc ${conflict.command}`, conflictItems));
+      console.log("");
+    }
+
+    // Conflict resolution suggestions
+    const resolutionSuggestions = [
+      "Higher priority directories (listed first) take precedence",
+      "Consider renaming conflicting scripts to avoid clashes",
+      "Use different subdirectories to organize similar commands",
+      "Remove unused scripts from lower-priority directories",
+      "Reorder extensionsDirs in config to change priority"
+    ];
+
+    console.log(ui.createBox(
+      resolutionSuggestions.map(tip => `${ui.icons.bullet} ${ui.format.muted(tip)}`).join("\n"),
+      { title: "💡 Conflict Resolution", borderColor: "yellow", dimBorder: true }
+    ));
+    console.log("");
+  } else {
+    console.log(ui.success("✅ No conflicts detected", "All commands have unique names"));
+    console.log("");
+  }
+
+  // Extensions summary by directory
+  if (extensionSources.length > 0) {
+    const summaryByDir = new Map<string, any[]>();
+    
+    for (const source of extensionSources) {
+      if (!summaryByDir.has(source.sourceDir)) {
+        summaryByDir.set(source.sourceDir, []);
+      }
+      summaryByDir.get(source.sourceDir)!.push(source);
+    }
+
+    const summaryItems = [];
+    let totalActive = 0;
+    let totalShadowed = 0;
+
+    for (const [dir, sources] of summaryByDir.entries()) {
+      const priority = sources[0]?.priority + 1 || 0;
+      const activeSources = sources.filter(source => 
+        !conflicts.some(conflict => 
+          conflict.conflictingExtensions.some((ext: any) => ext.scriptPath === source.extension.scriptPath)
+        )
+      );
+      const shadowedSources = sources.filter(source => 
+        conflicts.some(conflict => 
+          conflict.conflictingExtensions.some((ext: any) => ext.scriptPath === source.extension.scriptPath)
+        )
+      );
+      
+      totalActive += activeSources.length;
+      totalShadowed += shadowedSources.length;
+
+      summaryItems.push({
+        label: `Priority ${priority}`,
+        value: dir
+      });
+      
+      summaryItems.push({
+        label: "├─ Active",
+        value: `${activeSources.length} commands`,
+        status: activeSources.length > 0 ? 'success' as const : undefined
+      });
+      
+      summaryItems.push({
+        label: "└─ Shadowed",
+        value: `${shadowedSources.length} commands`,
+        status: shadowedSources.length > 0 ? 'warning' as const : undefined
+      });
+    }
+
+    console.log(ui.createInfoPanel("📊 Extensions Summary", summaryItems));
+    console.log("");
+
+    console.log(ui.createInfoPanel("🎯 Overall Status", [
+      {
+        label: "Total directories",
+        value: `${extensionsDirs.length}`,
+        status: 'success' as const
+      },
+      {
+        label: "Active commands",
+        value: `${totalActive}`,
+        status: totalActive > 0 ? 'success' as const : 'warning' as const
+      },
+      {
+        label: "Shadowed commands",
+        value: `${totalShadowed}`,
+        status: totalShadowed === 0 ? 'success' as const : 'warning' as const
+      },
+      {
+        label: "Health status",
+        value: conflicts.length === 0 ? "✅ Healthy" : `⚠️ ${conflicts.length} conflict(s)`,
+        status: conflicts.length === 0 ? 'success' as const : 'warning' as const
+      }
+    ]));
+  }
+
+  console.log("");
 }
 
 // Helper function to copy directory recursively
@@ -833,6 +1080,14 @@ program
       console.error(themeChalk.statusError(`❌ Failed to create alias "${aliasName}":`), error);
       process.exit(1);
     }
+  });
+
+// Doctor command
+program
+  .command("doctor")
+  .description("Diagnose configuration and identify extension conflicts")
+  .action(async () => {
+    await handleDoctor();
   });
 
 // Completion command

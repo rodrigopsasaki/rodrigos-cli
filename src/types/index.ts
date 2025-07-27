@@ -31,7 +31,8 @@ export interface ExecutionContext {
 }
 
 export interface Config {
-  extensionsDir?: string;
+  extensionsDir?: string; // Deprecated: use extensionsDirs instead
+  extensionsDirs?: string[];
   defaultRunner?: string;
   enableLogging?: boolean;
   darkMode?: boolean | undefined;
@@ -41,4 +42,16 @@ export interface CompletionSuggestion {
   text: string;
   description?: string | undefined;
   type?: "command" | "option" | "argument";
+}
+
+export interface ExtensionConflict {
+  command: string;
+  primaryExtension: Extension;
+  conflictingExtensions: Array<Extension & { sourceDir: string }>;
+}
+
+export interface ExtensionSource {
+  extension: Extension;
+  sourceDir: string;
+  priority: number; // Lower number = higher priority (first in config)
 }

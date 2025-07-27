@@ -15,7 +15,7 @@ export class ConfigManager {
 
   private loadConfig(): Config {
     const defaultConfig: Config = {
-      extensionsDir: XDGPaths.getExtensionsDir(),
+      extensionsDirs: [XDGPaths.getExtensionsDir()],
       defaultRunner: "node",
       enableLogging: true,
       darkMode: undefined, // undefined means auto-detect
@@ -26,7 +26,19 @@ export class ConfigManager {
       try {
         const configContent = readFileSync(this.configPath, "utf8");
         const userConfig = yaml.load(configContent) as Partial<Config>;
-        return { ...defaultConfig, ...userConfig };
+        
+        // Handle backward compatibility: migrate extensionsDir to extensionsDirs
+        const config = { ...defaultConfig, ...userConfig };
+        if (config.extensionsDir && !config.extensionsDirs) {
+          config.extensionsDirs = [config.extensionsDir];
+          delete config.extensionsDir;
+        } else if (config.extensionsDir && config.extensionsDirs) {
+          // If both exist, prefer extensionsDirs and warn about deprecated field
+          console.warn("Warning: Both extensionsDir and extensionsDirs found in config. Using extensionsDirs and ignoring extensionsDir.");
+          delete config.extensionsDir;
+        }
+        
+        return config;
       } catch (error) {
         console.warn(`Warning: Could not load config from ${this.configPath}:`, error);
       }
@@ -74,11 +86,13 @@ export class ConfigManager {
 # - Cache: ${xdgDirs['cache']}
 # - State: ${xdgDirs['state']}
 
-# Directory where your extensions are stored
-# This is where rc will look for your custom commands
-# Default: ${XDGPaths.getExtensionsDir()}
-# You can change this to any directory you prefer
-extensionsDir: ${extensionsDir}
+# Directories where your extensions are stored
+# rc will look for custom commands in these directories in order
+# First directory has highest priority for command conflicts
+# Default: ["${XDGPaths.getExtensionsDir()}"]
+# You can add multiple directories for different sources
+extensionsDirs:
+  - ${extensionsDir}
 
 # Default script runner for extensions
 # Options: "node", "python", "ruby", "php", "bash", "sh"
@@ -131,7 +145,7 @@ darkMode: null
       
       // Update the in-memory config
       this.config = {
-        extensionsDir,
+        extensionsDirs: [extensionsDir],
         defaultRunner: "node",
         enableLogging: true,
         darkMode: undefined
@@ -142,7 +156,13 @@ darkMode: null
   }
 
   getExtensionsDir(): string {
-    return this.config.extensionsDir || XDGPaths.getExtensionsDir();
+    // Backward compatibility: return first directory if using new format
+    const dirs = this.getExtensionsDirs();
+    return dirs[0] || XDGPaths.getExtensionsDir();
+  }
+
+  getExtensionsDirs(): string[] {
+    return this.config.extensionsDirs || [XDGPaths.getExtensionsDir()];
   }
 
   getDefaultRunner(): string {

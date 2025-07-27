@@ -2,13 +2,15 @@ import { readdirSync, readFileSync, existsSync, statSync } from "fs";
 import { join, extname, basename } from "path";
 import { spawn } from "child_process";
 import yaml from "js-yaml";
-import type { Extension, ExtensionConfig, ExecutionContext } from "../types/index.js";
+import type { Extension, ExtensionConfig, ExecutionContext, ExtensionSource, ExtensionConflict } from "../types/index.js";
 import { ConfigManager } from "./config-manager.js";
 import { chalk } from "../utils/chalk.js";
 
 export class ExtensionLoader {
   private configManager: ConfigManager;
   private extensionsCache: Extension[] = [];
+  private extensionSourcesCache: ExtensionSource[] = [];
+  private conflictsCache: ExtensionConflict[] = [];
   private cacheValid = false;
 
   constructor(configManager: ConfigManager) {
@@ -20,8 +22,32 @@ export class ExtensionLoader {
       return this.extensionsCache;
     }
 
-    const extensionsDir = this.configManager.getExtensionsDir();
-    this.extensionsCache = await this.discoverExtensions(extensionsDir);
+    const extensionsDirs = this.configManager.getExtensionsDirs();
+    const allExtensionSources: ExtensionSource[] = [];
+
+    // Discover extensions from all directories
+    for (let i = 0; i < extensionsDirs.length; i++) {
+      const dir = extensionsDirs[i];
+      if (!dir) continue;
+      
+      const extensions = await this.discoverExtensions(dir);
+      
+      // Add source information to each extension
+      for (const extension of extensions) {
+        allExtensionSources.push({
+          extension,
+          sourceDir: dir,
+          priority: i // Lower number = higher priority
+        });
+      }
+    }
+
+    // Merge extensions with conflict detection
+    const { mergedExtensions, conflicts } = this.mergeExtensionsWithConflicts(allExtensionSources);
+    
+    this.extensionsCache = mergedExtensions;
+    this.extensionSourcesCache = allExtensionSources;
+    this.conflictsCache = conflicts;
     this.cacheValid = true;
 
     return this.extensionsCache;
@@ -317,7 +343,61 @@ export class ExtensionLoader {
     return args;
   }
 
+  private mergeExtensionsWithConflicts(sources: ExtensionSource[]): { mergedExtensions: Extension[], conflicts: ExtensionConflict[] } {
+    const commandMap = new Map<string, ExtensionSource[]>();
+    const conflicts: ExtensionConflict[] = [];
+
+    // Group extensions by command name
+    for (const source of sources) {
+      const command = source.extension.command;
+      if (!commandMap.has(command)) {
+        commandMap.set(command, []);
+      }
+      commandMap.get(command)!.push(source);
+    }
+
+    // Process each command group
+    const mergedExtensions: Extension[] = [];
+    for (const [command, commandSources] of commandMap.entries()) {
+      // Sort by priority (lower number = higher priority)
+      commandSources.sort((a, b) => a.priority - b.priority);
+      
+      // First source wins (highest priority)
+      const primarySource = commandSources[0];
+      if (!primarySource) continue;
+      
+      mergedExtensions.push(primarySource.extension);
+
+      // Track conflicts if there are multiple sources
+      if (commandSources.length > 1) {
+        const conflictingExtensions = commandSources.slice(1).map(source => ({
+          ...source.extension,
+          sourceDir: source.sourceDir
+        }));
+
+        conflicts.push({
+          command,
+          primaryExtension: primarySource.extension,
+          conflictingExtensions
+        });
+      }
+    }
+
+    return { mergedExtensions, conflicts };
+  }
+
+  getConflicts(): ExtensionConflict[] {
+    return [...this.conflictsCache];
+  }
+
+  getExtensionSources(): ExtensionSource[] {
+    return [...this.extensionSourcesCache];
+  }
+
   invalidateCache(): void {
     this.cacheValid = false;
+    this.extensionsCache = [];
+    this.extensionSourcesCache = [];
+    this.conflictsCache = [];
   }
 }
