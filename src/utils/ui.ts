@@ -194,7 +194,7 @@ class PremiumUI {
   }
 
   // Create simple command list (alternative to table for better formatting)
-  createCommandList(commands: Array<{ command: string; description: string; type?: string }>): string {
+  createCommandList(commands: Array<{ command: string; description: string; type?: string; aliases?: string[] }>): string {
     let output = '';
     
     for (const cmd of commands) {
@@ -203,7 +203,14 @@ class PremiumUI {
       const description = cmd.description || 'No description available';
       
       output += `${this.icons.bullet} ${commandStr} ${typeStr}\n`;
-      output += `   ${themeChalk.textMuted(description)}\n\n`;
+      output += `   ${themeChalk.textMuted(description)}\n`;
+      
+      if (cmd.aliases && cmd.aliases.length > 0) {
+        const aliasesStr = cmd.aliases.map(alias => themeChalk.accent(`rc ${cmd.command.split(' ').slice(0, -1).concat(alias).join(' ')}`)).join(', ');
+        output += `   ${themeChalk.textMuted('Aliases:')} ${aliasesStr}\n`;
+      }
+      
+      output += '\n';
     }
     
     return output.trim();

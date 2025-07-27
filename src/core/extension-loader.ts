@@ -93,6 +93,17 @@ export class ExtensionLoader {
           const extension = await this.createExtension(command, itemPath);
           if (extension) {
             extensions.push(extension);
+            
+            // Create alias extensions if aliases are defined
+            if (extension.config?.aliases) {
+              for (const alias of extension.config.aliases) {
+                const aliasCommand = baseCommand ? `${baseCommand} ${alias}` : alias;
+                const aliasExtension = await this.createExtension(aliasCommand, itemPath);
+                if (aliasExtension) {
+                  extensions.push(aliasExtension);
+                }
+              }
+            }
           }
         }
       }

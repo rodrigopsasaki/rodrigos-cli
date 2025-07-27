@@ -1121,16 +1121,31 @@ program
       return;
     }
 
-    // Create command table
-    const commandData = extensions.map((ext: any) => ({
-      command: ext.command,
-      description: ext.config?.description || "No description available",
-      type: ext.scriptType
-    }));
+    // Filter and group extensions to avoid showing aliases as separate commands
+    const commandMap = new Map<string, any>();
+    
+    for (const ext of extensions) {
+      const isAlias = extensions.some(originalExt => 
+        originalExt !== ext && 
+        originalExt.scriptPath === ext.scriptPath &&
+        originalExt.config?.aliases?.includes(ext.command.split(' ').pop() || '')
+      );
+      
+      if (!isAlias) {
+        commandMap.set(ext.scriptPath, {
+          command: ext.command,
+          description: ext.config?.description || "No description available",
+          type: ext.scriptType,
+          aliases: ext.config?.aliases || []
+        });
+      }
+    }
+    
+    const commandData = Array.from(commandMap.values());
 
     console.log(ui.createBox(
       ui.createCommandList(commandData),
-      { title: `🚀 All Commands (${extensions.length} total)` }
+      { title: `🚀 All Commands (${commandData.length} unique, ${extensions.length} total including aliases)` }
     ));
 
     // Show hierarchical view

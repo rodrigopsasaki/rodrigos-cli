@@ -8,7 +8,9 @@ A developer-first CLI framework that makes local commands feel native — like t
 - **📁 Directory-based extensions**: Recursively scan and register commands
 - **🔄 Runtime-agnostic**: Support for Node.js, TypeScript, Bash, Python, Ruby, PHP
 - **⚙️ Sidecar configs**: Optional YAML/JSON metadata for enhanced functionality
+- **🏷️ Command aliases**: Define multiple ways to call the same command
 - **📋 Directory-level configs**: Command groups with their own descriptions and options
+- **🔀 Command wrapping**: Extend existing tools (like npm) with custom commands
 - **🔍 First-class autocomplete**: Tab completion for all shells (zsh, bash, fish)
 - **🎨 Theme-aware colors**: Automatic dark/light terminal detection
 - **📊 XDG compliance**: Follows XDG Base Directory Specification
@@ -146,6 +148,10 @@ rc follows the XDG Base Directory Specification for proper file organization:
 │   │   ├── objectid.yaml
 │   │   ├── rstring.sh
 │   │   └── rstring.yaml
+│   ├── npm/
+│   │   ├── npm.yaml            # npm wrapper config
+│   │   ├── show-scripts.sh     # Custom npm command
+│   │   └── show-scripts.yaml   # With aliases: [ss]
 │   ├── git/
 │   │   ├── aliases.sh
 │   │   └── aliases.yaml
@@ -168,6 +174,7 @@ This creates commands like:
 - `rc gen uuid`
 - `rc gen objectid`
 - `rc gen rstring`
+- `rc npm show-scripts` / `rc npm ss` (with alias)
 - `rc git aliases`
 - `rc aws s3 sync`
 - `rc aws ec2 list`
@@ -193,6 +200,9 @@ Every script can have an optional sidecar YAML/JSON file for metadata:
 description: What this command does
 runner: node
 passContext: true
+aliases:
+  - short-name
+  - alias2
 options:
   - name: profile
     type: string
@@ -225,6 +235,7 @@ This gives the `gen` command its own description and options, separate from its 
 - **description**: Help text for the command
 - **runner**: Override the default runtime
 - **passContext**: Pass execution context as JSON to stdin
+- **aliases**: Array of alternative names for the command
 - **options**: Define command-line options with validation
 
 ## 🎯 Environment Variables
@@ -324,7 +335,7 @@ rc automatically detects your terminal theme and adjusts colors accordingly:
 ### Core Commands
 
 - `rc` - Show configuration info and quick start commands
-- `rc help` - Show all available commands recursively
+- `rc help` - Show all available commands recursively (includes aliases)
 - `rc completion <shell>` - Generate shell completion script
 - `rc --setup` - Create example extensions and XDG directory structure
 - `rc --config` - Show detailed configuration and XDG directory info
@@ -336,7 +347,54 @@ rc automatically detects your terminal theme and adjusts colors accordingly:
 
 All commands discovered from your extensions directory are automatically available with full help and autocomplete support.
 
-## 🔗 Command Aliasing
+## 🏷️ Command Aliases
+
+### Sidecar Aliases
+
+Define multiple ways to call the same command using sidecar YAML files:
+
+```yaml
+# show-scripts.yaml
+description: Show available npm scripts in a nice format
+runner: bash
+aliases:
+  - ss
+  - scripts
+```
+
+This creates multiple commands that all execute the same script:
+- `rc npm show-scripts`
+- `rc npm ss` 
+- `rc npm scripts`
+
+All aliases are automatically:
+- **Discoverable**: Shown in help output with proper formatting
+- **Auto-completed**: Tab completion works for all variations
+- **Conflict-aware**: The `rc doctor` command detects naming conflicts
+
+### Example: npm Extension with Aliases
+
+```bash
+# Create npm extension directory
+mkdir -p ~/.local/share/rc/extensions/npm
+
+# show-scripts.sh - Custom npm command
+#!/bin/bash
+echo "📦 Available npm scripts:"
+# ... script content ...
+
+# show-scripts.yaml - Configuration with alias
+description: Show available npm scripts in a nice format
+runner: bash
+aliases:
+  - ss
+```
+
+This creates:
+- `npm show-scripts` - Full command name
+- `npm ss` - Short alias
+
+## 🔗 System-Level Command Aliasing
 
 Create direct aliases for any rc command to make them feel native:
 
@@ -357,6 +415,66 @@ Perfect for:
 - **Personal shortcuts**: `uuid` instead of `rc gen uuid`
 - **Team commands**: Share a repo of scripts, everyone aliases the ones they use
 - **Frequently used tools**: Make your most-used commands feel native
+
+## 🔀 Command Wrapping & Extension
+
+Extend existing command-line tools by creating rc extensions that add functionality while preserving original behavior.
+
+### Example: Extending npm
+
+Create a comprehensive npm extension that adds custom commands while passing through standard npm functionality:
+
+```bash
+# 1. Create npm extension directory
+mkdir -p ~/.local/share/rc/extensions/npm
+
+# 2. Add custom commands with aliases
+cat > ~/.local/share/rc/extensions/npm/show-scripts.yaml << 'EOF'
+description: Show available npm scripts in a nice format
+runner: bash
+aliases:
+  - ss
+EOF
+
+cat > ~/.local/share/rc/extensions/npm/show-scripts.sh << 'EOF'
+#!/bin/bash
+echo "📦 Available npm scripts:"
+node -e "
+  const pkg = JSON.parse(require('fs').readFileSync('package.json', 'utf8'));
+  if (!pkg.scripts) { console.log('   No scripts found'); process.exit(0); }
+  Object.entries(pkg.scripts).forEach(([name, cmd]) => {
+    console.log(\`   🚀 \${name.padEnd(15)} → \${cmd}\`);
+  });
+"
+EOF
+
+chmod +x ~/.local/share/rc/extensions/npm/show-scripts.sh
+
+# 3. Create npm alias to override system npm
+rc alias npm
+```
+
+**Result**: 
+- `npm show-scripts` / `npm ss` - Custom enhanced command
+- `npm install`, `npm run`, etc. - Pass through to real npm
+- All standard npm functionality preserved
+- Enhanced with custom commands and better UX
+
+### How Command Wrapping Works
+
+1. **Extension Discovery**: rc finds your custom commands in the npm directory
+2. **Alias Creation**: `rc alias npm` creates a system-wide `npm` command
+3. **Intelligent Routing**: 
+   - Known custom commands → Execute your scripts
+   - Unknown commands → Pass through to real npm
+4. **Seamless Integration**: Works exactly like the original tool
+
+### Use Cases
+
+- **Enhanced git**: Add custom workflows while keeping all git commands
+- **Better docker**: Add shortcuts and utilities to docker
+- **Custom kubectl**: Add cluster-specific shortcuts to Kubernetes commands
+- **Team tools**: Create standardized commands that extend company tools
 
 ## 🧪 Development
 

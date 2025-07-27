@@ -14,6 +14,7 @@ export interface ExtensionConfig {
   passContext?: boolean;
   options?: ExtensionOption[];
   suggestionsCommand?: string;
+  aliases?: string[];
 }
 
 export interface Extension {
