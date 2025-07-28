@@ -293,32 +293,33 @@ program
     await handleAliasInit();
   });
 
-// Default action when no command is provided
+// Default action when no command is provided - only if no global options are set
 program.action(async () => {
+  const options = program.opts();
+  
+  // Handle global options first
+  if (options['setup']) {
+    await handleSetup(options);
+    return;
+  }
+
+  if (options['config']) {
+    await handleConfig();
+    return;
+  }
+
+  if (options['update']) {
+    await handleUpdate();
+    return;
+  }
+
+  // If no global options, show dashboard
   await showDashboard();
 });
 
 // Main execution function
 async function main() {
   program.parse();
-
-  const options = program.opts();
-
-  // Handle global options
-  if (options['setup']) {
-    await handleSetup(options);
-    process.exit(0);
-  }
-
-  if (options['config']) {
-    await handleConfig();
-    process.exit(0);
-  }
-
-  if (options['update']) {
-    await handleUpdate();
-    process.exit(0);
-  }
 }
 
 // Run the main function
@@ -484,8 +485,21 @@ async function handleSetup(options: { showTutorial?: boolean } = {}) {
   const setupWizard = new SetupWizard();
   
   try {
-    // Run initial setup
-    await setupWizard.run();
+    // Run initial setup and get user preferences
+    const setupOptions = await setupWizard.run();
+    
+    // Perform the actual setup tasks based on user preferences
+    if (setupOptions.setupXDG) {
+      await performXDGSetup();
+    }
+    
+    if (setupOptions.createConfig) {
+      await createConfigFile(setupOptions);
+    }
+    
+    if (setupOptions.createExamples) {
+      await createExampleExtensions();
+    }
     
     console.log("\n" + ui.createBox([
         "✅ Configuration created successfully!",
@@ -1752,4 +1766,114 @@ fi
 `;
 
   writeFileSync(wrapperPath, wrapperScript, { mode: 0o755 });
+}
+
+// Setup functions
+async function performXDGSetup(): Promise<void> {
+  const xdgPaths = XDGPaths.getAllAppDirs();
+  
+  // Create XDG directories
+  for (const [dirType, dirPath] of Object.entries(xdgPaths)) {
+    if (dirPath) {
+      const { mkdirSync } = await import('fs');
+      try {
+        mkdirSync(dirPath, { recursive: true });
+        console.log(ui.info(`Created ${dirType} directory: ${dirPath}`));
+      } catch (error) {
+        console.log(ui.warning(`Directory already exists: ${dirPath}`));
+      }
+    }
+  }
+}
+
+async function createConfigFile(setupOptions: any): Promise<void> {
+  const configPath = configManager.getConfigPath();
+  const extensionsDir = XDGPaths.getExtensionsDir();
+  
+  const config = {
+    version: "1.0",
+    extensionsDirs: [extensionsDir],
+    defaultRunner: setupOptions.defaultRunner || "node",
+    enableLogging: setupOptions.enableLogging || false,
+    darkMode: setupOptions.darkMode === "auto" ? undefined : setupOptions.darkMode === "dark"
+  };
+  
+  try {
+    const { mkdirSync, writeFileSync } = await import('fs');
+    const { dirname } = await import('path');
+    
+    // Ensure config directory exists
+    mkdirSync(dirname(configPath), { recursive: true });
+    
+    // Write config file
+    writeFileSync(configPath, JSON.stringify(config, null, 2));
+    console.log(ui.info(`Created configuration file: ${configPath}`));
+  } catch (error) {
+    console.log(ui.error("Failed to create config file", error instanceof Error ? error.message : String(error)));
+  }
+}
+
+async function createExampleExtensions(): Promise<void> {
+  const extensionsDir = XDGPaths.getExtensionsDir();
+  const { mkdirSync, writeFileSync, existsSync } = await import('fs');
+  const { join } = await import('path');
+  
+  try {
+    // Ensure extensions directory exists
+    mkdirSync(extensionsDir, { recursive: true });
+    
+    // Create gen directory for generator commands
+    const genDir = join(extensionsDir, 'gen');
+    mkdirSync(genDir, { recursive: true });
+    
+    // Create UUID generator script
+    const uuidScript = join(genDir, 'uuid.sh');
+    if (!existsSync(uuidScript)) {
+      const uuidContent = `#!/bin/bash
+# Generate a UUID
+if command -v uuidgen >/dev/null 2>&1; then
+    uuidgen | tr '[:upper:]' '[:lower:]'
+elif command -v python3 >/dev/null 2>&1; then
+    python3 -c "import uuid; print(uuid.uuid4())"
+else
+    echo "Error: Neither uuidgen nor python3 is available" >&2
+    exit 1
+fi
+`;
+      writeFileSync(uuidScript, uuidContent, { mode: 0o755 });
+      
+      // Create config file for uuid command
+      const uuidConfig = join(genDir, 'uuid.yaml');
+      const configContent = `description: Generate a UUID (Universally Unique Identifier)
+runner: bash
+aliases: []
+`;
+      writeFileSync(uuidConfig, configContent);
+      console.log(ui.info(`Created example command: gen uuid`));
+    }
+    
+    // Create a simple hello world script
+    const helloScript = join(extensionsDir, 'hello.js');
+    if (!existsSync(helloScript)) {
+      const helloContent = `#!/usr/bin/env node
+console.log('Hello from rc! 👋');
+console.log('You can create your own commands by adding scripts to:', process.env.RC_EXTENSIONS_DIR || '${extensionsDir}');
+`;
+      writeFileSync(helloScript, helloContent, { mode: 0o755 });
+      
+      // Create config for hello command
+      const helloConfig = join(extensionsDir, 'hello.yaml');
+      const helloConfigContent = `description: Simple hello world example
+runner: node
+aliases: []
+`;
+      writeFileSync(helloConfig, helloConfigContent);
+      console.log(ui.info(`Created example command: hello`));
+    }
+    
+    console.log(ui.success(`Example extensions created in: ${extensionsDir}`));
+    
+  } catch (error) {
+    console.log(ui.error("Failed to create example extensions", error instanceof Error ? error.message : String(error)));
+  }
 }
