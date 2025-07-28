@@ -14,6 +14,11 @@ import { withProgress } from "../utils/progress.js";
 import { SetupWizard } from "../utils/wizard.js";
 import { CompletionService } from "../core/completion-service.js";
 
+// Helper function to check if aliasing is enabled
+function isAliasingEnabled(): boolean {
+  return process.env['RC_ALIASING_ENABLED'] === '1';
+}
+
 const program = new Command();
 const configManager = new ConfigManager();
 const extensionLoader = new ExtensionLoader(configManager);
@@ -135,19 +140,24 @@ program
       ));
     }
 
-    // Quick tips
-    const tips = [
+    // Quick tips - emphasize alias setup if not configured
+    const tips: string[] = [];
+    
+    if (!isAliasingEnabled()) {
+      tips.push("🚀 SETUP ALIASES: Run 'eval \"$(rc alias-init)\"' to enable direct command shortcuts!");
+      tips.push("");
+    }
+    
+    tips.push(
       "Use 'rc <command>' to execute any command",
-      "Use 'rc alias <command>' to create direct aliases",
-      "Use 'rc alias-init' to generate shell aliases for aliasable directories",
-      "Add 'eval \"$(rc alias-init)\"' to shell config for dynamic aliasing",
+      "Use 'rc alias <command>' to create command wrappers",
       "Add --verbose to any command for debug information",
       "Commands are auto-discovered from your extensions directory"
-    ];
+    );
 
     console.log("\n" + ui.createBox(
-      tips.map(tip => `${ui.icons.bullet} ${ui.format.muted(tip)}`).join("\n"),
-      { title: "💡 Tips", borderColor: "yellow", dimBorder: true }
+      tips.map(tip => tip === "" ? "" : `${ui.icons.bullet} ${tip === tips[0] && !isAliasingEnabled() ? tip : ui.format.muted(tip)}`).join("\n"),
+      { title: "💡 Tips", borderColor: isAliasingEnabled() ? "yellow" : "red", dimBorder: !isAliasingEnabled() }
     ));
     
     console.log("");
@@ -666,17 +676,24 @@ async function handleConfig() {
     console.log(ui.error("Failed to load extensions", error instanceof Error ? error.message : String(error)));
   }
 
-  // Help text
-  const configHelp = [
+  // Help text - emphasize alias setup if not configured
+  const configHelp: string[] = [];
+  
+  if (!isAliasingEnabled()) {
+    configHelp.push("🚀 SETUP ALIASES: Run 'eval \"$(rc alias-init)\"' to enable direct command shortcuts!");
+    configHelp.push("");
+  }
+  
+  configHelp.push(
     "Edit the configuration file to customize rc behavior",
     "Add more extension directories for broader command discovery",
     "Use 'rc doctor' to diagnose configuration issues",
     "Run 'rc --setup' to reconfigure interactively"
-  ];
+  );
 
   console.log(ui.createBox(
-    configHelp.map(tip => `${ui.icons.bullet} ${ui.format.muted(tip)}`).join("\n"),
-    { title: "💡 Configuration Tips", borderColor: "yellow", dimBorder: true }
+    configHelp.map(tip => tip === "" ? "" : `${ui.icons.bullet} ${tip === configHelp[0] && !isAliasingEnabled() ? tip : ui.format.muted(tip)}`).join("\n"),
+    { title: "💡 Configuration Tips", borderColor: isAliasingEnabled() ? "yellow" : "red", dimBorder: !isAliasingEnabled() }
   ));
   
   console.log("");
@@ -1320,7 +1337,7 @@ async function createDirectoryAlias(aliasName: string, extensions: Extension[], 
   
   // Ensure YAML config exists
   if (!existsSync(yamlPath)) {
-    const yamlContent = `description: ${aliasName} wrapper that routes custom commands to cbh implementations
+    const yamlContent = `description: ${aliasName} wrapper that routes custom commands to rc, others to system ${aliasName}
 aliasable: true
 runner: bash
 `;
@@ -1388,12 +1405,7 @@ fi
   });
   console.log(themeChalk.textMuted(`   Other commands will be routed to system ${aliasName}`));
   console.log('');
-  
-  // Export the alias to current shell immediately
-  console.log(themeChalk.status(`✨ To use immediately, run:`));
-  console.log(`alias ${aliasName}='${wrapperPath}'`);
-  console.log('');
-  console.log(themeChalk.textMuted('💡 For permanent setup, add: eval "$(rc alias-init)" to shell config'));
+  console.log(themeChalk.status(`✨ Wrapper created! Run 'eval "$(rc alias-init)"' to set up all aliases.`));
 }
 
 // Handle alias-init command - scan directories and output shell aliases
@@ -1474,6 +1486,9 @@ async function handleAliasInit(): Promise<void> {
     
     if (aliasableDirectories.length === 0) {
       console.error(`# No aliasable directories found. Add 'aliasable: true' to directory YAML configs.`);
+    } else {
+      // Set environment variable to indicate aliases are configured
+      console.log(`export RC_ALIASING_ENABLED=1`);
     }
     
   } catch (error) {
