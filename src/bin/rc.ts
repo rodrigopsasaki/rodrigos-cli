@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
-import { existsSync, mkdirSync, statSync } from "fs";
+import { existsSync, mkdirSync, statSync, writeFileSync, readFileSync } from "fs";
 import { join, dirname } from "path";
 import { execSync } from "child_process";
 import { ExtensionLoader } from "../core/extension-loader.js";
@@ -298,7 +298,12 @@ async function handleSetup() {
         `Extensions: ${configManager.getExtensionsDir()}`,
         "",
         "You can edit the config file to customize rc's behavior.",
-        "The config includes detailed comments and examples."
+        "The config includes detailed comments and examples.",
+        "",
+        "🔗 To enable dynamic aliasing, add this to your shell config:",
+        "   eval \"$(rc alias-init)\"",
+        "",
+        "This will create aliases for directories with 'aliasable: true' in their YAML config."
       ].join("\n"),
       { title: "🎉 Setup Complete", borderColor: "green" }
     ));
@@ -398,11 +403,42 @@ async function handleConfig() {
   console.log(ui.createInfoPanel("🔧 Current Settings", settingsInfo));
   console.log("");
 
-  // Extensions info with table
+  // Load extensions for aliasing and extension info
   const extensions = await withProgress(
     "Loading extensions...",
     () => extensionLoader.loadExtensions()
   );
+
+  // Aliasing info
+  const aliasableDirectories = extensions.filter(ext => {
+    // Check for directory-level extensions with aliasable config
+    if (!ext.command.includes(' ') && ext.scriptPath.endsWith(ext.command)) {
+      const configPath = join(ext.scriptPath, `${ext.command}.yaml`);
+      if (existsSync(configPath)) {
+        try {
+          const configContent = readFileSync(configPath, 'utf8');
+          return configContent.includes('aliasable: true');
+        } catch {
+          return false;
+        }
+      }
+    }
+    return false;
+  });
+
+  if (aliasableDirectories.length > 0) {
+    const aliasInfo = aliasableDirectories.map(ext => ({
+      label: ext.command,
+      value: `${join(ext.scriptPath, `${ext.command}.sh`)}`,
+      status: existsSync(join(ext.scriptPath, `${ext.command}.sh`)) ? 'success' as const : 'warning' as const
+    }));
+    
+    console.log(ui.createInfoPanel("🔗 Available Aliases", aliasInfo));
+    console.log(ui.format.muted("💡 Add to shell config: eval \"$(rc alias-init)\""));
+    console.log("");
+  }
+
+  // Extensions info with table
   
   // Filter out virtual directory-level extensions and wrapper scripts
   const actualExtensions = extensions.filter(ext => !isVirtualExtension(ext) && !isWrapperScript(ext));
@@ -1059,7 +1095,22 @@ program
     try {
       // Verify the command exists
       const extensions = await extensionLoader.loadExtensions();
-      const matchingExtension = extensions.find(ext => ext.command === fullCommand);
+      let matchingExtension = extensions.find(ext => ext.command === fullCommand);
+      
+      // If no exact match, check if it's a directory-level command
+      if (!matchingExtension && commandArgs.length === 1) {
+        const directoryCommands = extensions.filter(ext => ext.command.startsWith(`${fullCommand} `));
+        if (directoryCommands.length > 0) {
+          // Create a virtual extension for directory aliasing
+          matchingExtension = {
+            command: fullCommand,
+            scriptPath: fullCommand, // This will trigger directory command detection
+            description: `Directory commands for ${fullCommand}`,
+            runner: 'virtual',
+            passContext: false
+          } as any;
+        }
+      }
       
       if (!matchingExtension) {
         console.error(themeChalk.statusError(`❌ Command "rc ${fullCommand}" not found`));
@@ -1073,24 +1124,25 @@ program
         process.exit(1);
       }
 
-      // Check if this is a directory-level command (virtual extension)
-      const isDirectoryCommand = matchingExtension.scriptPath.endsWith(aliasName as string) && !matchingExtension.scriptPath.includes('.');
-      if (isDirectoryCommand) {
-        console.error(themeChalk.statusError(`❌ Cannot alias directory command "${fullCommand}"`));
-        console.log(themeChalk.textMuted('You can only alias specific commands, not command groups.'));
-        console.log(themeChalk.textMuted(`Try aliasing a specific command like "rc ${fullCommand} <subcommand>"`));
-        process.exit(1);
-      }
-
-      // Create symlink
+      // Get rc binary path
       const rcBinaryPath = process.argv[1];
       if (!rcBinaryPath) {
         console.error(themeChalk.statusError('Could not determine rc binary path'));
         process.exit(1);
         return; // This satisfies TypeScript's control flow analysis
       }
+
+      // Check if this is a directory-level command (virtual extension)
+      const isDirectoryCommand = matchingExtension.scriptPath === aliasName || (matchingExtension.scriptPath.endsWith(aliasName as string) && !matchingExtension.scriptPath.includes('.'));
+      if (isDirectoryCommand) {
+        // Create directory-level alias - generate wrapper script
+        await createDirectoryAlias(aliasName as string, extensions, rcBinaryPath);
+        return;
+      }
+
+      // Create symlink for individual commands
       
-      const aliasPath = join(dirname(rcBinaryPath as string), aliasName as string);
+      const aliasPath = join(dirname(rcBinaryPath), aliasName as string);
       
       if (existsSync(aliasPath)) {
         console.log(themeChalk.textMuted(`🔗 Alias "${aliasName}" already exists: ${aliasPath}`));
@@ -1106,6 +1158,14 @@ program
       console.error(themeChalk.statusError(`❌ Failed to create alias "${aliasName}":`), error);
       process.exit(1);
     }
+  });
+
+// Alias-init command - generates shell aliases based on directory configs
+program
+  .command("alias-init")
+  .description("Generate shell aliases for all aliasable directories")
+  .action(async () => {
+    await handleAliasInit();
   });
 
 // Doctor command
@@ -1231,6 +1291,8 @@ program
     const tips = [
       "Use 'rc <command>' to execute any command",
       "Use 'rc alias <command>' to create direct aliases",
+      "Use 'rc alias-init' to generate shell aliases for aliasable directories",
+      "Add 'eval \"$(rc alias-init)\"' to shell config for dynamic aliasing",
       "Add --verbose to any command for debug information",
       "Commands are auto-discovered from your extensions directory"
     ];
@@ -1379,6 +1441,253 @@ async function handleAliasedExecution(aliasCommand: string): Promise<void> {
     console.error(themeChalk.statusError('Error executing aliased command:'), error);
     process.exit(1);
   }
+}
+
+// Create directory-level alias that routes commands intelligently
+async function createDirectoryAlias(aliasName: string, extensions: Extension[], rcBinaryPath: string): Promise<void> {
+  // Find all commands that start with this directory name
+  const directoryCommands = extensions.filter(ext => 
+    ext.command.startsWith(`${aliasName} `) || ext.command === aliasName
+  );
+
+  if (directoryCommands.length === 0) {
+    console.error(themeChalk.statusError(`❌ No commands found for directory "${aliasName}"`));
+    return;
+  }
+
+  // Find the directory-level extension (virtual extension for the directory itself)
+  let directoryExtension = directoryCommands.find(ext => ext.command === aliasName);
+  
+  // If no directory-level extension, create one from the first subcommand
+  if (!directoryExtension && directoryCommands.length > 0) {
+    const firstSubcommand = directoryCommands[0];
+    if (!firstSubcommand) {
+      console.error(themeChalk.statusError('No valid subcommand found'));
+      return;
+    }
+    const extensionDir = dirname(firstSubcommand.scriptPath);
+    directoryExtension = {
+      command: aliasName,
+      scriptPath: extensionDir,
+      description: `Directory commands for ${aliasName}`,
+      runner: 'virtual',
+      passContext: false
+    } as any;
+  }
+  
+  if (!directoryExtension) {
+    console.error(themeChalk.statusError('No directory-level extension found'));
+    return;
+  }
+
+  // Use the directory path
+  const extensionDir = directoryExtension.scriptPath;
+  const wrapperPath = join(extensionDir, `${aliasName}.sh`);
+
+  // Check if directory has aliasable config
+  const configPath = join(extensionDir, `${aliasName}.yaml`);
+  let isAliasable = false;
+  
+  if (existsSync(configPath)) {
+    try {
+      const configContent = readFileSync(configPath, 'utf8');
+      // Simple YAML parsing for aliasable flag
+      isAliasable = configContent.includes('aliasable: true');
+    } catch (error) {
+      console.log(themeChalk.textMuted(`   Warning: Could not read ${configPath}: ${error}`));
+    }
+  }
+
+  if (!isAliasable) {
+    console.error(themeChalk.statusError(`❌ Directory "${aliasName}" is not configured as aliasable`));
+    console.log(themeChalk.textMuted(`   Add "aliasable: true" to ${configPath} to enable aliasing`));
+    return;
+  }
+
+  // Get available subcommands
+  const availableCommands = directoryCommands
+    .map(ext => ext.command.replace(`${aliasName} `, ''))
+    .filter(cmd => cmd !== aliasName);
+
+  // Create bash wrapper script that routes commands
+  const wrapperScript = `#!/bin/bash
+
+# ${aliasName} wrapper - routes custom commands to rc, others to system ${aliasName}
+# Generated by rc alias ${aliasName}
+
+# Get the command being called
+SUBCOMMAND="$1"
+
+# Available custom commands
+CUSTOM_COMMANDS=(${availableCommands.map(cmd => `"${cmd}"`).join(' ')})
+
+# Check if this is a custom command
+is_custom_command() {
+  for cmd in "\${CUSTOM_COMMANDS[@]}"; do
+    if [[ "$1" == "$cmd" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Route the command
+if [[ -z "$SUBCOMMAND" ]] || is_custom_command "$SUBCOMMAND"; then
+  # Route to rc
+  exec "${rcBinaryPath}" ${aliasName} "$@"
+else
+  # Find real ${aliasName} in PATH (excluding this script)
+  REAL_COMMAND=$(PATH=\${PATH//${extensionDir}:/} which ${aliasName} 2>/dev/null)
+  
+  if [[ -n "$REAL_COMMAND" && "$REAL_COMMAND" != "${wrapperPath}" ]]; then
+    # Route to real ${aliasName}
+    exec "$REAL_COMMAND" "$@"
+  else
+    echo "❌ Command '${aliasName} $SUBCOMMAND' not found"
+    echo "Available custom commands:"
+${availableCommands.map(cmd => `    echo "   ${aliasName} ${cmd}"`).join('\n')}
+    echo ""
+    echo "Or install ${aliasName} to use standard commands"
+    exit 1
+  fi
+fi
+`;
+
+  // Write the wrapper script to the directory
+  writeFileSync(wrapperPath, wrapperScript, { mode: 0o755 });
+  
+  console.log(themeChalk.status(`🔗 Created wrapper script: ${wrapperPath}`));
+  console.log(themeChalk.textMuted(`   Custom commands:`));
+  availableCommands.forEach(cmd => {
+    console.log(themeChalk.textMuted(`     ${aliasName} ${cmd}`));
+  });
+  console.log(themeChalk.textMuted(`   Other commands will be routed to system ${aliasName}`));
+  console.log('');
+  console.log(themeChalk.textMuted('💡 Use dynamic aliasing: eval "$(rc alias-init)" in shell config'));
+}
+
+// Handle alias-init command - scan directories and output shell aliases
+async function handleAliasInit(): Promise<void> {
+  try {
+    const extensions = await extensionLoader.loadExtensions();
+    
+    // Find all directories by grouping commands
+    const directoryMap = new Map<string, Extension[]>();
+    
+    for (const ext of extensions) {
+      if (ext.command.includes(' ')) {
+        const [dirName] = ext.command.split(' ');
+        if (dirName) {
+          if (!directoryMap.has(dirName)) {
+            directoryMap.set(dirName, []);
+          }
+          directoryMap.get(dirName)!.push(ext);
+        }
+      }
+    }
+    
+    const aliasableDirectories: string[] = [];
+    
+    for (const [dirName, dirCommands] of directoryMap) {
+      // Get directory path from first command in the directory
+      const firstCommand = dirCommands[0];
+      if (!firstCommand) continue;
+      const dirPath = dirname(firstCommand.scriptPath);
+      const configPath = join(dirPath, `${dirName}.yaml`);
+      
+      if (existsSync(configPath)) {
+        try {
+          const configContent = readFileSync(configPath, 'utf8');
+          if (configContent.includes('aliasable: true')) {
+            const wrapperPath = join(dirPath, `${dirName}.sh`);
+            
+            // Ensure wrapper exists, create if needed
+            if (!existsSync(wrapperPath)) {
+              await createDirectoryWrapper(dirName, extensions);
+            }
+            
+            // Output alias command
+            console.log(`alias ${dirName}='${wrapperPath}'`);
+            aliasableDirectories.push(dirName);
+          }
+        } catch (error) {
+          // Skip directories with unreadable configs
+        }
+      }
+    }
+    
+    if (aliasableDirectories.length === 0) {
+      console.log('# No aliasable directories found');
+      console.log('# Add "aliasable: true" to directory YAML configs to enable aliasing');
+    }
+    
+  } catch (error) {
+    console.error(`# Error generating aliases: ${error}`);
+  }
+}
+
+// Create wrapper script for a directory (used by both alias and alias-init)
+async function createDirectoryWrapper(aliasName: string, extensions: Extension[]): Promise<void> {
+  const directoryCommands = extensions.filter(ext => 
+    ext.command.startsWith(`${aliasName} `) || ext.command === aliasName
+  );
+
+  const directoryExtension = directoryCommands.find(ext => ext.command === aliasName);
+  if (!directoryExtension) return;
+
+  const extensionDir = directoryExtension.scriptPath;
+  const wrapperPath = join(extensionDir, `${aliasName}.sh`);
+  
+  const availableCommands = directoryCommands
+    .map(ext => ext.command.replace(`${aliasName} `, ''))
+    .filter(cmd => cmd !== aliasName);
+
+  const rcBinaryPath = process.argv[1] || '/usr/local/bin/rc';
+
+  const wrapperScript = `#!/bin/bash
+
+# ${aliasName} wrapper - routes custom commands to rc, others to system ${aliasName}
+# Generated by rc alias-init
+
+# Get the command being called
+SUBCOMMAND="$1"
+
+# Available custom commands
+CUSTOM_COMMANDS=(${availableCommands.map(cmd => `"${cmd}"`).join(' ')})
+
+# Check if this is a custom command
+is_custom_command() {
+  for cmd in "\${CUSTOM_COMMANDS[@]}"; do
+    if [[ "$1" == "$cmd" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Route the command
+if [[ -z "$SUBCOMMAND" ]] || is_custom_command "$SUBCOMMAND"; then
+  # Route to rc
+  exec "${rcBinaryPath}" ${aliasName} "$@"
+else
+  # Find real ${aliasName} in PATH (excluding this script)
+  REAL_COMMAND=$(PATH=\${PATH//${extensionDir}:/} which ${aliasName} 2>/dev/null)
+  
+  if [[ -n "$REAL_COMMAND" && "$REAL_COMMAND" != "${wrapperPath}" ]]; then
+    # Route to real ${aliasName}
+    exec "$REAL_COMMAND" "$@"
+  else
+    echo "❌ Command '${aliasName} $SUBCOMMAND' not found"
+    echo "Available custom commands:"
+${availableCommands.map(cmd => `    echo "   ${aliasName} ${cmd}"`).join('\n')}
+    echo ""
+    echo "Or install ${aliasName} to use standard commands"
+    exit 1
+  fi
+fi
+`;
+
+  writeFileSync(wrapperPath, wrapperScript, { mode: 0o755 });
 }
 
 // Parse arguments and run
