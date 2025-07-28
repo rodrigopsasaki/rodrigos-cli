@@ -13,6 +13,7 @@ import { themeChalk } from "../utils/chalk.js";
 import { withProgress } from "../utils/progress.js";
 import { SetupWizard } from "../utils/wizard.js";
 import { CompletionService } from "../core/completion-service.js";
+import { getVersion } from "../utils/version.js";
 
 // Helper function to check if aliasing is enabled
 function isAliasingEnabled(): boolean {
@@ -35,7 +36,7 @@ if (process.argv[2] && !process.argv[2].startsWith('-') && !['help', 'doctor', '
 program
   .name("rc")
   .description("Rodrigo's CLI - A developer-first CLI framework")
-  .version("1.0.3")
+  .version(getVersion())
   .option("--setup", "Interactive setup with examples")
   .option("--config", "Show configuration details") 
   .option("--update", "Update to latest version")
@@ -700,11 +701,180 @@ async function handleConfig() {
 }
 
 async function handleUpdate() {
-  console.log(ui.createHeader("📦 Update Check", "Checking for latest version"));
-  
-  console.log(ui.info("Update functionality", "This feature is not yet implemented."));
-  console.log(ui.format.muted("Current version: 1.0.3"));
-  console.log("");
+  console.log(themeChalk.header("\n🔄 Updating Rodrigo's CLI...\n"));
+
+  try {
+    // Get the current script's directory to find the installation
+    const currentScriptPath = process.argv[1];
+    if (!currentScriptPath) {
+      console.log(themeChalk.statusError("   ❌ Could not determine script path"));
+      return;
+    }
+    
+    const currentScriptDir = dirname(currentScriptPath);
+    
+    // Look for the installation directory
+    let installationDir: string;
+    
+    // Check if we're in a development environment (running from source)
+    if (currentScriptPath.includes('node_modules') || currentScriptPath.includes('src/bin')) {
+      console.log(themeChalk.status("   📁 Running from development environment"));
+      console.log(themeChalk.textMuted("   💡 Use git pull to update in development"));
+      return;
+    }
+    
+    // Check if we're in the user's local bin directory
+    if (currentScriptPath.includes('.local/bin')) {
+      installationDir = join(currentScriptDir, 'rodrigos-cli');
+    } else {
+      // Try to find the installation in common locations
+      const possiblePaths = [
+        join(process.env['HOME'] || '', '.local/bin/rodrigos-cli'),
+        '/usr/local/bin/rodrigos-cli',
+        '/opt/rodrigos-cli'
+      ];
+      
+      installationDir = possiblePaths.find(path => existsSync(path)) || '';
+    }
+    
+    if (!installationDir || !existsSync(installationDir)) {
+      console.log(themeChalk.statusError("   ❌ Could not find installation directory"));
+      console.log(themeChalk.textMuted("   💡 Please reinstall using the installer script"));
+      return;
+    }
+    
+    console.log(themeChalk.section("📁 Installation found:"));
+    console.log(themeChalk.textMuted(`   ${installationDir}`));
+    
+    // Check if it's a git repository
+    const gitDir = join(installationDir, '.git');
+    if (!existsSync(gitDir)) {
+      console.log(themeChalk.statusError("   ❌ Installation is not a git repository"));
+      console.log(themeChalk.textMuted("   💡 Please reinstall using the installer script"));
+      return;
+    }
+    
+    // Check for uncommitted changes
+    console.log(themeChalk.section("\n🔍 Checking repository status..."));
+    
+    try {
+      const status = execSync('git status --porcelain', { 
+        cwd: installationDir, 
+        encoding: 'utf8' 
+      }).trim();
+      
+      if (status) {
+        console.log(themeChalk.statusError("   ❌ Uncommitted changes detected:"));
+        console.log(themeChalk.textMuted(status.split('\n').map(line => `      ${line}`).join('\n')));
+        console.log(themeChalk.textMuted("\n   💡 Please commit or stash your changes before updating"));
+        return;
+      }
+    } catch (error) {
+      console.log(themeChalk.statusError("   ❌ Failed to check git status"));
+      return;
+    }
+    
+    // Get current branch and commit
+    const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', { 
+      cwd: installationDir, 
+      encoding: 'utf8' 
+    }).trim();
+    
+    const currentCommit = execSync('git rev-parse --short HEAD', { 
+      cwd: installationDir, 
+      encoding: 'utf8' 
+    }).trim();
+    
+    console.log(themeChalk.textMuted(`   📍 Current branch: ${currentBranch}`));
+    console.log(themeChalk.textMuted(`   📍 Current commit: ${currentCommit}`));
+    
+    // Fetch latest changes
+    console.log(themeChalk.section("\n📥 Fetching latest changes..."));
+    
+    try {
+      execSync('git fetch origin', { 
+        cwd: installationDir, 
+        stdio: 'pipe' 
+      });
+    } catch (error) {
+      console.log(themeChalk.statusError("   ❌ Failed to fetch from origin"));
+      return;
+    }
+    
+    // Check if there are updates
+    const localCommit = execSync('git rev-parse HEAD', { 
+      cwd: installationDir, 
+      encoding: 'utf8' 
+    }).trim();
+    
+    const remoteCommit = execSync(`git rev-parse origin/${currentBranch}`, { 
+      cwd: installationDir, 
+      encoding: 'utf8' 
+    }).trim();
+    
+    if (localCommit === remoteCommit) {
+      console.log(themeChalk.status("   ✅ Already up to date!"));
+      return;
+    }
+    
+    // Show what will be updated
+    console.log(themeChalk.section("\n📋 Updates available:"));
+    const commits = execSync(`git log --oneline HEAD..origin/${currentBranch}`, { 
+      cwd: installationDir, 
+      encoding: 'utf8' 
+    }).trim();
+    
+    if (commits) {
+      console.log(themeChalk.textMuted(commits.split('\n').map(line => `   ${line}`).join('\n')));
+    }
+    
+    // Perform the update
+    console.log(themeChalk.section("\n🔄 Updating..."));
+    
+    try {
+      // Pull latest changes
+      console.log(themeChalk.textMuted("   📥 Pulling latest changes..."));
+      execSync('git pull origin ' + currentBranch, { 
+        cwd: installationDir, 
+        stdio: 'pipe' 
+      });
+      
+      // Install/update dependencies
+      console.log(themeChalk.textMuted("   📦 Installing dependencies..."));
+      execSync('npm install --no-audit --no-fund', { 
+        cwd: installationDir, 
+        stdio: 'pipe' 
+      });
+      
+      // Build the project
+      console.log(themeChalk.textMuted("   🔨 Building project..."));
+      execSync('npm run build', { 
+        cwd: installationDir, 
+        stdio: 'pipe' 
+      });
+      
+      console.log(themeChalk.status("   ✅ Update completed successfully!"));
+      
+      // Show new version
+      const packageJsonPath = join(installationDir, 'package.json');
+      if (existsSync(packageJsonPath)) {
+        try {
+          const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+          console.log(themeChalk.textMuted(`   📦 Version: ${packageJson.version}`));
+        } catch (error) {
+          // Ignore parsing errors
+        }
+      }
+      
+    } catch (error) {
+      console.error(themeChalk.statusError("   ❌ Update failed:"), error);
+      console.log(themeChalk.textMuted("   💡 You may need to resolve conflicts manually"));
+    }
+    
+  } catch (error) {
+    console.error(themeChalk.statusError("   ❌ Update failed:"), error);
+    console.log(themeChalk.textMuted("   💡 Please try running the installer again"));
+  }
 }
 
 // Alias command
