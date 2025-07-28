@@ -248,13 +248,8 @@ program
         }
       }
 
-      // Get rc binary path
-      const rcBinaryPath = process.argv[1];
-      if (!rcBinaryPath) {
-        console.error(themeChalk.statusError('Could not determine rc binary path'));
-        process.exit(1);
-        return; // This satisfies TypeScript's control flow analysis
-      }
+      // Use the rc command from PATH instead of process.argv[1] which might point to .ts file
+      const rcBinaryPath = 'rc';
 
       // Check if this is a directory-level command (virtual extension)
       if (matchingExtension) {
@@ -1058,13 +1053,8 @@ program
         }
       }
 
-      // Get rc binary path
-      const rcBinaryPath = process.argv[1];
-      if (!rcBinaryPath) {
-        console.error(themeChalk.statusError('Could not determine rc binary path'));
-        process.exit(1);
-        return; // This satisfies TypeScript's control flow analysis
-      }
+      // Use the rc command from PATH instead of process.argv[1] which might point to .ts file
+      const rcBinaryPath = 'rc';
 
       // Check if this is a directory-level command (virtual extension)
       if (matchingExtension) {
@@ -1772,7 +1762,8 @@ async function createDirectoryWrapper(aliasName: string, extensions: Extension[]
     .map(ext => ext.command.replace(`${aliasName} `, ''))
     .filter(cmd => cmd !== aliasName);
 
-  const rcBinaryPath = process.argv[1] || '/usr/local/bin/rc';
+  // Use the rc command from PATH instead of process.argv[1] which might point to .ts file
+  const rcBinaryPath = 'rc';
 
   const wrapperScript = `#!/bin/bash
 
