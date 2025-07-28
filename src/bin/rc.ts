@@ -14,6 +14,7 @@ import { withProgress } from "../utils/progress.js";
 import { SetupWizard } from "../utils/wizard.js";
 import { CompletionService } from "../core/completion-service.js";
 import { getVersion } from "../utils/version.js";
+import { XDGPaths } from "../utils/xdg-paths.js";
 
 // Helper function to check if aliasing is enabled
 function isAliasingEnabled(): boolean {
@@ -704,176 +705,189 @@ async function handleUpdate() {
   console.log(themeChalk.header("\n🔄 Updating Rodrigo's CLI...\n"));
 
   try {
-    // Get the current script's directory to find the installation
+    const config = configManager.getConfig();
     const currentScriptPath = process.argv[1];
+    
     if (!currentScriptPath) {
       console.log(themeChalk.statusError("   ❌ Could not determine script path"));
       return;
     }
     
-    const currentScriptDir = dirname(currentScriptPath);
+    // Determine source repository location
+    let sourceRepo: string;
     
-    // Look for the installation directory
-    let installationDir: string;
-    
-    // Check if we're in a development environment (running from source)
-    if (currentScriptPath.includes('node_modules') || currentScriptPath.includes('src/bin')) {
-      console.log(themeChalk.status("   📁 Running from development environment"));
-      console.log(themeChalk.textMuted("   💡 Use git pull to update in development"));
-      return;
-    }
-    
-    // Check if we're in the user's local bin directory
-    if (currentScriptPath.includes('.local/bin')) {
-      installationDir = join(currentScriptDir, 'rodrigos-cli');
+    if (config.sourceRepo) {
+      // Use configured source repo
+      sourceRepo = config.sourceRepo;
+      console.log(themeChalk.section("📁 Using configured source:"));
+      console.log(themeChalk.textMuted(`   ${sourceRepo}`));
+    } else if (currentScriptPath.includes('src/bin') && existsSync(join(dirname(dirname(dirname(currentScriptPath))), '.git'))) {
+      // Running from source in development
+      sourceRepo = dirname(dirname(dirname(currentScriptPath)));
+      console.log(themeChalk.section("📁 Running from source:"));
+      console.log(themeChalk.textMuted(`   ${sourceRepo}`));
     } else {
-      // Try to find the installation in common locations
-      const possiblePaths = [
-        join(process.env['HOME'] || '', '.local/bin/rodrigos-cli'),
-        '/usr/local/bin/rodrigos-cli',
-        '/opt/rodrigos-cli'
-      ];
-      
-      installationDir = possiblePaths.find(path => existsSync(path)) || '';
+      // Use XDG-compliant default location
+      sourceRepo = XDGPaths.getSourceRepoDir();
+      console.log(themeChalk.section("📁 Using default source location:"));
+      console.log(themeChalk.textMuted(`   ${sourceRepo}`));
     }
     
-    if (!installationDir || !existsSync(installationDir)) {
-      console.log(themeChalk.statusError("   ❌ Could not find installation directory"));
-      console.log(themeChalk.textMuted("   💡 Please reinstall using the installer script"));
+    // Check if source repo exists and is a git repo
+    const isGitRepo = existsSync(join(sourceRepo, '.git'));
+    
+    if (!existsSync(sourceRepo) || !isGitRepo) {
+      // Clone the repository
+      console.log(themeChalk.section("\n📥 Setting up source repository..."));
+      
+      if (!existsSync(sourceRepo)) {
+        console.log(themeChalk.textMuted("   📁 Creating directory..."));
+        execSync(`mkdir -p "${dirname(sourceRepo)}"`, { stdio: 'pipe' });
+      }
+      
+      console.log(themeChalk.textMuted("   📥 Cloning repository..."));
+      execSync(`git clone https://github.com/rodrigopsasaki/rodrigos-cli.git "${sourceRepo}"`, { 
+        stdio: 'pipe' 
+      });
+    }
+    
+    // Update the source repository
+    console.log(themeChalk.section("\n📥 Updating source..."));
+    
+    // Check for uncommitted changes if running from source
+    if (currentScriptPath.includes('src/bin') && sourceRepo === dirname(dirname(dirname(currentScriptPath)))) {
+      const status = execSync('git status --porcelain', { 
+        cwd: sourceRepo, 
+        encoding: 'utf8' 
+      }).trim();
+      
+      if (status) {
+        console.log(themeChalk.statusError("   ❌ Uncommitted changes detected"));
+        console.log(themeChalk.textMuted("   💡 Please commit or stash your changes before updating"));
+        return;
+      }
+    }
+    
+    // Get current version
+    let currentVersion = 'unknown';
+    const currentPackageJsonPath = join(sourceRepo, 'package.json');
+    if (existsSync(currentPackageJsonPath)) {
+      try {
+        const packageJson = JSON.parse(readFileSync(currentPackageJsonPath, 'utf8'));
+        currentVersion = packageJson.version || 'unknown';
+      } catch (error) {
+        // Ignore
+      }
+    }
+    
+    // Fetch and pull latest changes
+    console.log(themeChalk.textMuted("   📥 Fetching latest changes..."));
+    execSync('git fetch origin', { cwd: sourceRepo, stdio: 'pipe' });
+    
+    const localCommit = execSync('git rev-parse HEAD', { 
+      cwd: sourceRepo, 
+      encoding: 'utf8' 
+    }).trim();
+    
+    const remoteCommit = execSync('git rev-parse origin/main', { 
+      cwd: sourceRepo, 
+      encoding: 'utf8' 
+    }).trim();
+    
+    if (localCommit === remoteCommit) {
+      console.log(themeChalk.status("   ✅ Already up to date!"));
+      console.log(themeChalk.textMuted(`   📦 Version: ${currentVersion}`));
       return;
     }
     
-    console.log(themeChalk.section("📁 Installation found:"));
-    console.log(themeChalk.textMuted(`   ${installationDir}`));
+    // Show what will be updated
+    console.log(themeChalk.section("\n📋 Updates available:"));
+    const commits = execSync('git log --oneline HEAD..origin/main', { 
+      cwd: sourceRepo, 
+      encoding: 'utf8' 
+    }).trim();
     
-    // Create a temporary directory for the update
-    const tempDir = join(process.env['TEMP'] || process.env['TMP'] || '/tmp', `rc-update-${Date.now()}`);
+    if (commits) {
+      console.log(themeChalk.textMuted(commits.split('\n').map(line => `   ${line}`).join('\n')));
+    }
     
+    // Pull the changes
+    console.log(themeChalk.textMuted("\n   📥 Pulling latest changes..."));
+    execSync('git pull origin main', { cwd: sourceRepo, stdio: 'pipe' });
+    
+    // Install dependencies and build
+    console.log(themeChalk.section("\n🔨 Building..."));
+    
+    console.log(themeChalk.textMuted("   📦 Installing dependencies..."));
+    execSync('npm install --no-audit --no-fund', { cwd: sourceRepo, stdio: 'pipe' });
+    
+    console.log(themeChalk.textMuted("   🔨 Building project..."));
+    execSync('npm run build', { cwd: sourceRepo, stdio: 'pipe' });
+    
+    // Get new version
+    let newVersion = 'unknown';
     try {
-      // Clone or pull the latest code in temp directory
-      console.log(themeChalk.section("\n📥 Fetching latest code..."));
-      
-      // Check if temp has existing clone
-      const tempRepoDir = join(tempDir, 'rodrigos-cli');
-      if (existsSync(join(tempRepoDir, '.git'))) {
-        // Pull latest
-        console.log(themeChalk.textMuted("   📥 Pulling latest changes..."));
-        execSync('git fetch origin && git reset --hard origin/main', { 
-          cwd: tempRepoDir, 
-          stdio: 'pipe' 
-        });
+      const packageJson = JSON.parse(readFileSync(currentPackageJsonPath, 'utf8'));
+      newVersion = packageJson.version || 'unknown';
+    } catch (error) {
+      // Ignore
+    }
+    
+    // Find installation directory if needed
+    let needsInstallUpdate = false;
+    let installationDir: string | null = null;
+    
+    if (!currentScriptPath.includes('src/bin')) {
+      // Not running from source, need to update installation
+      if (currentScriptPath.includes('.local/bin')) {
+        installationDir = join(dirname(currentScriptPath), 'rodrigos-cli');
       } else {
-        // Fresh clone
-        console.log(themeChalk.textMuted("   📥 Cloning repository..."));
-        execSync(`mkdir -p "${tempDir}" && git clone https://github.com/rodrigopsasaki/rodrigos-cli.git "${tempRepoDir}"`, { 
-          stdio: 'pipe' 
-        });
+        const possiblePaths = [
+          join(process.env['HOME'] || '', '.local/bin/rodrigos-cli'),
+          '/usr/local/bin/rodrigos-cli',
+          '/opt/rodrigos-cli'
+        ];
+        installationDir = possiblePaths.find(path => existsSync(path)) || null;
       }
       
-      // Get version info
-      let oldVersion = 'unknown';
-      let newVersion = 'unknown';
-      
-      const oldPackageJsonPath = join(installationDir, 'package.json');
-      if (existsSync(oldPackageJsonPath)) {
-        try {
-          const packageJson = JSON.parse(readFileSync(oldPackageJsonPath, 'utf8'));
-          oldVersion = packageJson.version || 'unknown';
-        } catch (error) {
-          // Ignore
-        }
+      if (installationDir && existsSync(installationDir)) {
+        needsInstallUpdate = true;
       }
-      
-      const newPackageJsonPath = join(tempRepoDir, 'package.json');
-      if (existsSync(newPackageJsonPath)) {
-        try {
-          const packageJson = JSON.parse(readFileSync(newPackageJsonPath, 'utf8'));
-          newVersion = packageJson.version || 'unknown';
-        } catch (error) {
-          // Ignore
-        }
-      }
-      
-      console.log(themeChalk.section("\n📦 Version info:"));
-      console.log(themeChalk.textMuted(`   Current: ${oldVersion}`));
-      console.log(themeChalk.textMuted(`   Latest:  ${newVersion}`));
-      
-      if (oldVersion === newVersion && oldVersion !== 'unknown') {
-        // Check git commits to see if there are actual changes
-        try {
-          // Get the latest commit from the temp repo
-          const latestCommit = execSync('git rev-parse --short HEAD', { 
-            cwd: tempRepoDir, 
-            encoding: 'utf8' 
-          }).trim();
-          
-          console.log(themeChalk.textMuted(`   Latest commit: ${latestCommit}`));
-          console.log(themeChalk.status("\n   ✅ Already up to date!"));
-          return;
-        } catch (error) {
-          // Continue with update anyway
-        }
-      }
-      
-      // Install dependencies and build
-      console.log(themeChalk.section("\n🔨 Building latest version..."));
-      
-      console.log(themeChalk.textMuted("   📦 Installing dependencies..."));
-      execSync('npm install --no-audit --no-fund', { 
-        cwd: tempRepoDir, 
-        stdio: 'pipe' 
-      });
-      
-      console.log(themeChalk.textMuted("   🔨 Building project..."));
-      execSync('npm run build', { 
-        cwd: tempRepoDir, 
-        stdio: 'pipe' 
-      });
-      
-      // Backup current installation
-      const backupDir = `${installationDir}.backup.${Date.now()}`;
-      console.log(themeChalk.textMuted("   💾 Creating backup..."));
-      execSync(`cp -r "${installationDir}" "${backupDir}"`, { stdio: 'pipe' });
-      
-      // Update the installation
+    }
+    
+    if (needsInstallUpdate && installationDir) {
       console.log(themeChalk.section("\n🔄 Updating installation..."));
+      console.log(themeChalk.textMuted(`   📁 ${installationDir}`));
       
-      // Remove old files (except user data)
+      // Remove old files
       execSync(`rm -rf "${installationDir}/dist" "${installationDir}/src" "${installationDir}/node_modules"`, { 
         stdio: 'pipe' 
       });
       
       // Copy new files
-      execSync(`cp -r "${tempRepoDir}/dist" "${installationDir}/"`, { stdio: 'pipe' });
-      execSync(`cp -r "${tempRepoDir}/src" "${installationDir}/"`, { stdio: 'pipe' });
-      execSync(`cp -r "${tempRepoDir}/node_modules" "${installationDir}/"`, { stdio: 'pipe' });
-      execSync(`cp "${tempRepoDir}/package.json" "${installationDir}/"`, { stdio: 'pipe' });
-      execSync(`cp "${tempRepoDir}/tsconfig.json" "${installationDir}/" 2>/dev/null || true`, { stdio: 'pipe' });
+      execSync(`cp -r "${sourceRepo}/dist" "${installationDir}/"`, { stdio: 'pipe' });
+      execSync(`cp -r "${sourceRepo}/src" "${installationDir}/"`, { stdio: 'pipe' });
+      execSync(`cp -r "${sourceRepo}/node_modules" "${installationDir}/"`, { stdio: 'pipe' });
+      execSync(`cp "${sourceRepo}/package.json" "${installationDir}/"`, { stdio: 'pipe' });
+      execSync(`cp "${sourceRepo}/tsconfig.json" "${installationDir}/" 2>/dev/null || true`, { stdio: 'pipe' });
       
       // Make scripts executable
       execSync(`chmod +x "${installationDir}/dist/bin/rc.js" "${installationDir}/dist/bin/rc-immutable.js" 2>/dev/null || true`, { 
         stdio: 'pipe' 
       });
-      
-      console.log(themeChalk.status("   ✅ Update completed successfully!"));
-      console.log(themeChalk.textMuted(`   📦 New version: ${newVersion}`));
-      console.log(themeChalk.textMuted(`   💾 Backup saved to: ${backupDir}`));
-      
-    } catch (error) {
-      console.error(themeChalk.statusError("   ❌ Update failed:"), error);
-      console.log(themeChalk.textMuted("   💡 Please try running the installer again"));
-    } finally {
-      // Clean up temp directory
-      try {
-        execSync(`rm -rf "${tempDir}"`, { stdio: 'pipe' });
-      } catch (error) {
-        // Ignore cleanup errors
-      }
+    }
+    
+    console.log(themeChalk.status("\n   ✅ Update completed successfully!"));
+    console.log(themeChalk.textMuted(`   📦 Version: ${currentVersion} → ${newVersion}`));
+    
+    if (!config.sourceRepo && sourceRepo === XDGPaths.getSourceRepoDir()) {
+      console.log(themeChalk.textMuted(`\n   💡 Tip: Source repository stored at ${sourceRepo}`));
+      console.log(themeChalk.textMuted(`   💡 Add 'sourceRepo: /path/to/your/fork' to config for custom location`));
     }
     
   } catch (error) {
     console.error(themeChalk.statusError("   ❌ Update failed:"), error);
-    console.log(themeChalk.textMuted("   💡 Please try running the installer again"));
+    console.log(themeChalk.textMuted("   💡 Check your internet connection and try again"));
   }
 }
 

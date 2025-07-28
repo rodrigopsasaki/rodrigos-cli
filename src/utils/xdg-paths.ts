@@ -118,6 +118,14 @@ export class XDGPaths {
   }
 
   /**
+   * Get the source repository directory
+   * Returns: ~/.local/share/rc/source/
+   */
+  static getSourceRepoDir(): string {
+    return join(this.getAppDataDir(), "source");
+  }
+
+  /**
    * Get all XDG directories for the application
    * Useful for setup and debugging
    */
@@ -131,6 +139,7 @@ export class XDGPaths {
       configFile: this.getConfigFile(),
       cacheFile: this.getExtensionsCacheFile(),
       stateFile: this.getStateFile(),
+      sourceRepo: this.getSourceRepoDir(),
     };
   }
 

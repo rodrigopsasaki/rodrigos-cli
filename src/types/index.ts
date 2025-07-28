@@ -37,6 +37,7 @@ export interface Config {
   defaultRunner?: string;
   enableLogging?: boolean;
   darkMode?: boolean | undefined;
+  sourceRepo?: string; // Path to the source repository for updates
 }
 
 export interface CompletionSuggestion {
