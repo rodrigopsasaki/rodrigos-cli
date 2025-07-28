@@ -21,7 +21,7 @@ export interface Extension {
   command: string;
   scriptPath: string;
   config?: ExtensionConfig | undefined;
-  scriptType: "js" | "ts" | "sh" | "py" | "rb" | "php";
+  scriptType: "js" | "ts" | "sh" | "py" | "rb" | "php" | "virtual";
 }
 
 export interface ExecutionContext {
