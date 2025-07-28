@@ -93,7 +93,7 @@ fi
 
 # Run the CLI with tsx
 cd "$CLI_DIR"
-npx tsx src/bin/rc-immutable.ts "$@"
+npx tsx src/bin/rc.ts "$@"
 EOF
 
 chmod +x ~/.local/bin/rc-immutable
