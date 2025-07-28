@@ -1825,9 +1825,12 @@ fi
 async function performXDGSetup(): Promise<void> {
   const xdgPaths = XDGPaths.getAllAppDirs();
   
+  // Only create directories, not files
+  const directoriesToCreate = ['config', 'data', 'cache', 'state', 'extensions', 'sourceRepo'];
+  
   // Create XDG directories
   for (const [dirType, dirPath] of Object.entries(xdgPaths)) {
-    if (dirPath) {
+    if (dirPath && directoriesToCreate.includes(dirType)) {
       const { mkdirSync } = await import('fs');
       try {
         mkdirSync(dirPath, { recursive: true });
