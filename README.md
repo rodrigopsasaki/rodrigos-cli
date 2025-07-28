@@ -394,27 +394,34 @@ This creates:
 - `npm show-scripts` - Full command name
 - `npm ss` - Short alias
 
-## 🔗 System-Level Command Aliasing
+## 🔗 Smart Command Aliasing
 
-Create direct aliases for any rc command to make them feel native:
+Create intelligent wrappers that make rc commands feel native while preserving system functionality:
 
 ```bash
-# Create aliases for specific commands
-rc alias gen uuid        # Creates 'uuid' command
-rc alias gen objectid    # Creates 'objectid' command  
-rc alias aws ec2 list    # Creates 'list' command (if you had this structure)
+# Create command wrappers
+rc alias gen             # Creates 'gen' wrapper for all gen commands
+rc alias npm             # Creates 'npm' wrapper that extends system npm
+
+# Set up all aliases at once
+eval "$(rc alias-init)"  # Automatically configures all aliasable commands
 
 # Now use them directly
-uuid                     # Runs: rc gen uuid
-objectid                # Runs: rc gen objectid
+gen uuid                 # Runs: rc gen uuid
+npm ss                   # Runs: rc npm ss (custom command)
+npm install react       # Runs: system npm install react (passes through)
 ```
 
-**How it works**: `rc alias` creates a symlink that automatically resolves to the full command. Completely stateless - the filesystem is the source of truth.
+**How it works**: 
+- `rc alias <command>` creates intelligent wrapper scripts that route custom commands to rc and pass unknown commands to system binaries
+- `rc alias-init` discovers all aliasable directories and outputs shell aliases to set them all up at once
+- Wrappers automatically detect whether a command is custom (handled by rc) or standard (passed to system)
 
-Perfect for:
-- **Personal shortcuts**: `uuid` instead of `rc gen uuid`
-- **Team commands**: Share a repo of scripts, everyone aliases the ones they use
-- **Frequently used tools**: Make your most-used commands feel native
+**Perfect for**:
+- **Command extension**: Add custom commands to existing tools (like npm, git, docker)
+- **Seamless workflow**: Custom commands feel native, standard commands work unchanged  
+- **Team productivity**: Share enhanced tooling without breaking existing workflows
+- **One-command setup**: `eval "$(rc alias-init)"` configures everything automatically
 
 ## 🔀 Command Wrapping & Extension
 
@@ -450,8 +457,9 @@ EOF
 
 chmod +x ~/.local/share/rc/extensions/npm/show-scripts.sh
 
-# 3. Create npm alias to override system npm
-rc alias npm
+# 3. Create npm wrapper and set up aliases
+rc alias npm                    # Creates intelligent npm wrapper
+eval "$(rc alias-init)"         # Sets up all aliases automatically
 ```
 
 **Result**: 
@@ -459,15 +467,17 @@ rc alias npm
 - `npm install`, `npm run`, etc. - Pass through to real npm
 - All standard npm functionality preserved
 - Enhanced with custom commands and better UX
+- **One command setup**: All aliases configured automatically
 
 ### How Command Wrapping Works
 
 1. **Extension Discovery**: rc finds your custom commands in the npm directory
-2. **Alias Creation**: `rc alias npm` creates a system-wide `npm` command
-3. **Intelligent Routing**: 
-   - Known custom commands → Execute your scripts
-   - Unknown commands → Pass through to real npm
-4. **Seamless Integration**: Works exactly like the original tool
+2. **Wrapper Creation**: `rc alias npm` creates an intelligent wrapper script
+3. **Automatic Setup**: `eval "$(rc alias-init)"` discovers and configures all wrappers
+4. **Intelligent Routing**: 
+   - Known custom commands → Execute your scripts via rc
+   - Unknown commands → Pass through to real system binary
+5. **Seamless Integration**: Works exactly like the original tool with enhanced functionality
 
 ### Use Cases
 
