@@ -746,129 +746,129 @@ async function handleUpdate() {
     console.log(themeChalk.section("📁 Installation found:"));
     console.log(themeChalk.textMuted(`   ${installationDir}`));
     
-    // Check if it's a git repository
-    const gitDir = join(installationDir, '.git');
-    if (!existsSync(gitDir)) {
-      console.log(themeChalk.statusError("   ❌ Installation is not a git repository"));
-      console.log(themeChalk.textMuted("   💡 Please reinstall using the installer script"));
-      return;
-    }
-    
-    // Check for uncommitted changes
-    console.log(themeChalk.section("\n🔍 Checking repository status..."));
+    // Create a temporary directory for the update
+    const tempDir = join(process.env['TEMP'] || process.env['TMP'] || '/tmp', `rc-update-${Date.now()}`);
     
     try {
-      const status = execSync('git status --porcelain', { 
-        cwd: installationDir, 
-        encoding: 'utf8' 
-      }).trim();
+      // Clone or pull the latest code in temp directory
+      console.log(themeChalk.section("\n📥 Fetching latest code..."));
       
-      if (status) {
-        console.log(themeChalk.statusError("   ❌ Uncommitted changes detected:"));
-        console.log(themeChalk.textMuted(status.split('\n').map(line => `      ${line}`).join('\n')));
-        console.log(themeChalk.textMuted("\n   💡 Please commit or stash your changes before updating"));
-        return;
+      // Check if temp has existing clone
+      const tempRepoDir = join(tempDir, 'rodrigos-cli');
+      if (existsSync(join(tempRepoDir, '.git'))) {
+        // Pull latest
+        console.log(themeChalk.textMuted("   📥 Pulling latest changes..."));
+        execSync('git fetch origin && git reset --hard origin/main', { 
+          cwd: tempRepoDir, 
+          stdio: 'pipe' 
+        });
+      } else {
+        // Fresh clone
+        console.log(themeChalk.textMuted("   📥 Cloning repository..."));
+        execSync(`mkdir -p "${tempDir}" && git clone https://github.com/rodrigopsasaki/rodrigos-cli.git "${tempRepoDir}"`, { 
+          stdio: 'pipe' 
+        });
       }
-    } catch (error) {
-      console.log(themeChalk.statusError("   ❌ Failed to check git status"));
-      return;
-    }
-    
-    // Get current branch and commit
-    const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', { 
-      cwd: installationDir, 
-      encoding: 'utf8' 
-    }).trim();
-    
-    const currentCommit = execSync('git rev-parse --short HEAD', { 
-      cwd: installationDir, 
-      encoding: 'utf8' 
-    }).trim();
-    
-    console.log(themeChalk.textMuted(`   📍 Current branch: ${currentBranch}`));
-    console.log(themeChalk.textMuted(`   📍 Current commit: ${currentCommit}`));
-    
-    // Fetch latest changes
-    console.log(themeChalk.section("\n📥 Fetching latest changes..."));
-    
-    try {
-      execSync('git fetch origin', { 
-        cwd: installationDir, 
-        stdio: 'pipe' 
-      });
-    } catch (error) {
-      console.log(themeChalk.statusError("   ❌ Failed to fetch from origin"));
-      return;
-    }
-    
-    // Check if there are updates
-    const localCommit = execSync('git rev-parse HEAD', { 
-      cwd: installationDir, 
-      encoding: 'utf8' 
-    }).trim();
-    
-    const remoteCommit = execSync(`git rev-parse origin/${currentBranch}`, { 
-      cwd: installationDir, 
-      encoding: 'utf8' 
-    }).trim();
-    
-    if (localCommit === remoteCommit) {
-      console.log(themeChalk.status("   ✅ Already up to date!"));
-      return;
-    }
-    
-    // Show what will be updated
-    console.log(themeChalk.section("\n📋 Updates available:"));
-    const commits = execSync(`git log --oneline HEAD..origin/${currentBranch}`, { 
-      cwd: installationDir, 
-      encoding: 'utf8' 
-    }).trim();
-    
-    if (commits) {
-      console.log(themeChalk.textMuted(commits.split('\n').map(line => `   ${line}`).join('\n')));
-    }
-    
-    // Perform the update
-    console.log(themeChalk.section("\n🔄 Updating..."));
-    
-    try {
-      // Pull latest changes
-      console.log(themeChalk.textMuted("   📥 Pulling latest changes..."));
-      execSync('git pull origin ' + currentBranch, { 
-        cwd: installationDir, 
-        stdio: 'pipe' 
-      });
       
-      // Install/update dependencies
+      // Get version info
+      let oldVersion = 'unknown';
+      let newVersion = 'unknown';
+      
+      const oldPackageJsonPath = join(installationDir, 'package.json');
+      if (existsSync(oldPackageJsonPath)) {
+        try {
+          const packageJson = JSON.parse(readFileSync(oldPackageJsonPath, 'utf8'));
+          oldVersion = packageJson.version || 'unknown';
+        } catch (error) {
+          // Ignore
+        }
+      }
+      
+      const newPackageJsonPath = join(tempRepoDir, 'package.json');
+      if (existsSync(newPackageJsonPath)) {
+        try {
+          const packageJson = JSON.parse(readFileSync(newPackageJsonPath, 'utf8'));
+          newVersion = packageJson.version || 'unknown';
+        } catch (error) {
+          // Ignore
+        }
+      }
+      
+      console.log(themeChalk.section("\n📦 Version info:"));
+      console.log(themeChalk.textMuted(`   Current: ${oldVersion}`));
+      console.log(themeChalk.textMuted(`   Latest:  ${newVersion}`));
+      
+      if (oldVersion === newVersion && oldVersion !== 'unknown') {
+        // Check git commits to see if there are actual changes
+        try {
+          // Get the latest commit from the temp repo
+          const latestCommit = execSync('git rev-parse --short HEAD', { 
+            cwd: tempRepoDir, 
+            encoding: 'utf8' 
+          }).trim();
+          
+          console.log(themeChalk.textMuted(`   Latest commit: ${latestCommit}`));
+          console.log(themeChalk.status("\n   ✅ Already up to date!"));
+          return;
+        } catch (error) {
+          // Continue with update anyway
+        }
+      }
+      
+      // Install dependencies and build
+      console.log(themeChalk.section("\n🔨 Building latest version..."));
+      
       console.log(themeChalk.textMuted("   📦 Installing dependencies..."));
       execSync('npm install --no-audit --no-fund', { 
-        cwd: installationDir, 
+        cwd: tempRepoDir, 
         stdio: 'pipe' 
       });
       
-      // Build the project
       console.log(themeChalk.textMuted("   🔨 Building project..."));
       execSync('npm run build', { 
-        cwd: installationDir, 
+        cwd: tempRepoDir, 
+        stdio: 'pipe' 
+      });
+      
+      // Backup current installation
+      const backupDir = `${installationDir}.backup.${Date.now()}`;
+      console.log(themeChalk.textMuted("   💾 Creating backup..."));
+      execSync(`cp -r "${installationDir}" "${backupDir}"`, { stdio: 'pipe' });
+      
+      // Update the installation
+      console.log(themeChalk.section("\n🔄 Updating installation..."));
+      
+      // Remove old files (except user data)
+      execSync(`rm -rf "${installationDir}/dist" "${installationDir}/src" "${installationDir}/node_modules"`, { 
+        stdio: 'pipe' 
+      });
+      
+      // Copy new files
+      execSync(`cp -r "${tempRepoDir}/dist" "${installationDir}/"`, { stdio: 'pipe' });
+      execSync(`cp -r "${tempRepoDir}/src" "${installationDir}/"`, { stdio: 'pipe' });
+      execSync(`cp -r "${tempRepoDir}/node_modules" "${installationDir}/"`, { stdio: 'pipe' });
+      execSync(`cp "${tempRepoDir}/package.json" "${installationDir}/"`, { stdio: 'pipe' });
+      execSync(`cp "${tempRepoDir}/tsconfig.json" "${installationDir}/" 2>/dev/null || true`, { stdio: 'pipe' });
+      
+      // Make scripts executable
+      execSync(`chmod +x "${installationDir}/dist/bin/rc.js" "${installationDir}/dist/bin/rc-immutable.js" 2>/dev/null || true`, { 
         stdio: 'pipe' 
       });
       
       console.log(themeChalk.status("   ✅ Update completed successfully!"));
-      
-      // Show new version
-      const packageJsonPath = join(installationDir, 'package.json');
-      if (existsSync(packageJsonPath)) {
-        try {
-          const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
-          console.log(themeChalk.textMuted(`   📦 Version: ${packageJson.version}`));
-        } catch (error) {
-          // Ignore parsing errors
-        }
-      }
+      console.log(themeChalk.textMuted(`   📦 New version: ${newVersion}`));
+      console.log(themeChalk.textMuted(`   💾 Backup saved to: ${backupDir}`));
       
     } catch (error) {
       console.error(themeChalk.statusError("   ❌ Update failed:"), error);
-      console.log(themeChalk.textMuted("   💡 You may need to resolve conflicts manually"));
+      console.log(themeChalk.textMuted("   💡 Please try running the installer again"));
+    } finally {
+      // Clean up temp directory
+      try {
+        execSync(`rm -rf "${tempDir}"`, { stdio: 'pipe' });
+      } catch (error) {
+        // Ignore cleanup errors
+      }
     }
     
   } catch (error) {
