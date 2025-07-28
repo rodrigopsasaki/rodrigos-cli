@@ -39,6 +39,7 @@ program
   .description("Rodrigo's CLI - A developer-first CLI framework")
   .version(getVersion())
   .option("--setup", "Interactive setup with examples")
+  .option("--setup-quick", "Quick non-interactive setup with examples")
   .option("--config", "Show configuration details") 
   .option("--update", "Update to latest version")
   .option("--verbose", "Enable verbose output");
@@ -303,6 +304,11 @@ program.action(async () => {
     return;
   }
 
+  if (options['setupQuick']) {
+    await handleQuickSetup();
+    return;
+  }
+
   if (options['config']) {
     await handleConfig();
     return;
@@ -547,6 +553,49 @@ async function handleSetup(options: { showTutorial?: boolean } = {}) {
         await showDashboard();
       }
     }
+
+  } catch (error) {
+    console.log(ui.error("Setup failed", error instanceof Error ? error.message : String(error)));
+    process.exit(1);
+  }
+}
+
+async function handleQuickSetup() {
+  console.log(ui.createHeader("🔧 Quick Setup", "Setting up Rodrigo's CLI with default options"));
+
+  try {
+    // Perform setup with default options (non-interactive)
+    const setupOptions = {
+      setupXDG: true,
+      createConfig: true,
+      createExamples: true,
+      showTutorial: false
+    };
+
+    console.log('🏗️ Setting up XDG directories...');
+    await performXDGSetup();
+    
+    console.log('📝 Creating config file...');
+    await createConfigFile(setupOptions);
+    
+    console.log('🎯 Creating example extensions...');
+    await createExampleExtensions();
+    
+    console.log("\n" + ui.createBox([
+        "✅ Quick setup completed successfully!",
+        "📁 Extensions directory created with examples",
+        "⚙️ Configuration file created with defaults",
+        "",
+        "You can now:",
+        "• Run 'rc help' to see all available commands", 
+        "• Run 'rc hello' to test the hello command",
+        "• Run 'rc gen uuid' to generate a UUID",
+        "• Create your own extensions in ~/.local/share/rc/extensions",
+        "",
+        "For more options, run 'rc --setup' for the interactive wizard."
+      ].join("\n"),
+      { title: "🎉 Setup Complete", borderColor: "green" }
+    ));
 
   } catch (error) {
     console.log(ui.error("Setup failed", error instanceof Error ? error.message : String(error)));
