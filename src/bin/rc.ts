@@ -487,17 +487,21 @@ async function handleSetup(options: { showTutorial?: boolean } = {}) {
   try {
     // Run initial setup and get user preferences
     const setupOptions = await setupWizard.run();
+    console.log('🔍 Setup options received:', setupOptions);
     
     // Perform the actual setup tasks based on user preferences
     if (setupOptions.setupXDG) {
+      console.log('🏗️ Setting up XDG directories...');
       await performXDGSetup();
     }
     
     if (setupOptions.createConfig) {
+      console.log('📝 Creating config file...');
       await createConfigFile(setupOptions);
     }
     
     if (setupOptions.createExamples) {
+      console.log('🎯 Creating example extensions...');
       await createExampleExtensions();
     }
     
