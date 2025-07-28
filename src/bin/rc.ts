@@ -298,25 +298,34 @@ program.action(async () => {
   await showDashboard();
 });
 
-program.parse();
+// Main execution function
+async function main() {
+  program.parse();
 
-const options = program.opts();
+  const options = program.opts();
 
-// Handle global options
-if (options['setup']) {
-  await handleSetup(options);
-  process.exit(0);
+  // Handle global options
+  if (options['setup']) {
+    await handleSetup(options);
+    process.exit(0);
+  }
+
+  if (options['config']) {
+    await handleConfig();
+    process.exit(0);
+  }
+
+  if (options['update']) {
+    await handleUpdate();
+    process.exit(0);
+  }
 }
 
-if (options['config']) {
-  await handleConfig();
-  process.exit(0);
-}
-
-if (options['update']) {
-  await handleUpdate();
-  process.exit(0);
-}
+// Run the main function
+main().catch((error) => {
+  console.error('Fatal error:', error);
+  process.exit(1);
+});
 
 // Dashboard is now handled by the default program action
 

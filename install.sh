@@ -17,9 +17,10 @@ if ! command -v git &> /dev/null; then
     exit 1
 fi
 
-# Create user's local bin directory
-echo "📁 Creating installation directory..."
+# Create user's local bin directory and XDG-compliant source directory
+echo "📁 Creating installation directories..."
 mkdir -p ~/.local/bin
+mkdir -p ~/.local/share/rc
 
 # Get the latest version
 echo "📥 Getting latest version..."
@@ -32,18 +33,28 @@ fi
 
 echo "📦 Installing version $LATEST_VERSION..."
 
+# Use XDG-compliant source directory
+SOURCE_DIR="$HOME/.local/share/rc/source"
+
 # Check if we're in a development environment (local git repo)
 if [ -d ".git" ] && [ -f "package.json" ]; then
     echo "📁 Development environment detected, using local files..."
     TEMP_DIR=$(pwd)
     USE_LOCAL=true
 else
-    # Clone and build locally
-    TEMP_DIR=$(mktemp -d)
-    echo "📁 Creating temporary directory: $TEMP_DIR"
-
-    git clone https://github.com/rodrigopsasaki/rodrigos-cli.git "$TEMP_DIR"
-    cd "$TEMP_DIR"
+    # Clone to the XDG-compliant source location
+    echo "📁 Setting up source repository: $SOURCE_DIR"
+    
+    if [ -d "$SOURCE_DIR/.git" ]; then
+        echo "📁 Source repository already exists, updating..."
+        cd "$SOURCE_DIR"
+        git fetch origin
+        git reset --hard origin/main
+    else
+        echo "📥 Cloning repository to source location..."
+        git clone https://github.com/rodrigopsasaki/rodrigos-cli.git "$SOURCE_DIR"
+        cd "$SOURCE_DIR"
+    fi
 
     # Checkout the specific version if it's not main
     if [ "$LATEST_VERSION" != "main" ]; then
@@ -58,6 +69,11 @@ else
             npm install --no-audit --no-fund --legacy-peer-deps --force
         }
     }
+    
+    echo "🔨 Building project..."
+    npm run build
+    
+    TEMP_DIR="$SOURCE_DIR"
 fi
 
 echo "🔧 Creating immutable entrypoint..."
@@ -66,12 +82,12 @@ cat > ~/.local/bin/rc-immutable << 'EOF'
 # Immutable entrypoint for Rodrigo's CLI
 # This script always points to the latest version and can self-update
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CLI_DIR="$SCRIPT_DIR/rodrigos-cli"
+# Use XDG-compliant source location
+CLI_DIR="$HOME/.local/share/rc/source"
 
 # If CLI directory doesn't exist, create it
 if [ ! -d "$CLI_DIR" ]; then
-    echo "❌ CLI installation not found. Please run the installer again."
+    echo "❌ CLI source not found. Please run the installer again."
     exit 1
 fi
 
@@ -85,23 +101,11 @@ chmod +x ~/.local/bin/rc-immutable
 echo "🔗 Creating symlink to immutable entrypoint..."
 ln -sf rc-immutable ~/.local/bin/rc
 
-echo "📁 Installing CLI files..."
-mkdir -p ~/.local/bin/rodrigos-cli
-cp -r src ~/.local/bin/rodrigos-cli/
-cp package.json ~/.local/bin/rodrigos-cli/
-cp tsconfig.json ~/.local/bin/rodrigos-cli/
-cp -r node_modules ~/.local/bin/rodrigos-cli/
-
-# Copy the immutable entrypoint if it exists in the current directory
-if [ -f "src/bin/rc-immutable.ts" ]; then
-    echo "📄 Copying immutable entrypoint..."
-    cp src/bin/rc-immutable.ts ~/.local/bin/rodrigos-cli/src/bin/
-fi
+# No need to copy files - they're already in the source location
+echo "✅ Source repository ready at: $SOURCE_DIR"
 
 echo "🧹 Cleaning up..."
-if [ "$USE_LOCAL" != "true" ]; then
-    rm -rf "$TEMP_DIR"
-fi
+# No cleanup needed since we use the persistent source directory
 
 # Test the installation
 if command -v rc &> /dev/null; then
